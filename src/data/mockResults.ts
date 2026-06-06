@@ -1,5 +1,5 @@
 import type { AwardFlightOption } from "@/types/awards";
-import type { CashFlightOption } from "@/types/flights";
+import type { CashFlightOption, RouteDetail } from "@/types/flights";
 import type { SavedSearch } from "@/types/search";
 
 const cabinCashPriceByPassenger = {
@@ -116,6 +116,121 @@ function getMockArrivalDateTime(search: SavedSearch, time: string): string {
   return `${search.departDate}T${time}:00+09:00`;
 }
 
+function createTwoSegmentRouteDetail({
+  firstDurationMinutes,
+  firstFlightNumber,
+  layoverAirport,
+  layoverDurationMinutes,
+  origin,
+  secondDurationMinutes,
+  secondFlightNumber,
+  destination,
+}: {
+  firstDurationMinutes: number;
+  firstFlightNumber: string;
+  layoverAirport: string;
+  layoverDurationMinutes: number;
+  origin: string;
+  secondDurationMinutes: number;
+  secondFlightNumber: string;
+  destination: string;
+}): RouteDetail {
+  return {
+    segments: [
+      {
+        id: `${firstFlightNumber}-${origin}-${layoverAirport}`,
+        flightNumber: firstFlightNumber,
+        origin,
+        destination: layoverAirport,
+        departureTime: "09:15",
+        arrivalTime: "11:00",
+        durationMinutes: firstDurationMinutes,
+      },
+      {
+        id: `${secondFlightNumber}-${layoverAirport}-${destination}`,
+        flightNumber: secondFlightNumber,
+        origin: layoverAirport,
+        destination,
+        departureTime: "13:15",
+        arrivalTime: "17:05",
+        durationMinutes: secondDurationMinutes,
+      },
+    ],
+    layovers: [
+      {
+        airport: layoverAirport,
+        durationMinutes: layoverDurationMinutes,
+      },
+    ],
+    totalDurationMinutes:
+      firstDurationMinutes + layoverDurationMinutes + secondDurationMinutes,
+  };
+}
+
+function createThreeSegmentRouteDetail({
+  destination,
+  firstLayoverAirport,
+  firstLayoverDurationMinutes,
+  origin,
+  secondLayoverAirport,
+  secondLayoverDurationMinutes,
+}: {
+  destination: string;
+  firstLayoverAirport: string;
+  firstLayoverDurationMinutes: number;
+  origin: string;
+  secondLayoverAirport: string;
+  secondLayoverDurationMinutes: number;
+}): RouteDetail {
+  return {
+    segments: [
+      {
+        id: `VS100-${origin}-${firstLayoverAirport}`,
+        flightNumber: "VS100",
+        origin,
+        destination: firstLayoverAirport,
+        departureTime: "07:30",
+        arrivalTime: "08:52",
+        durationMinutes: 82,
+      },
+      {
+        id: `VS200-${firstLayoverAirport}-${secondLayoverAirport}`,
+        flightNumber: "VS200",
+        origin: firstLayoverAirport,
+        destination: secondLayoverAirport,
+        departureTime: "11:57",
+        arrivalTime: "14:57",
+        durationMinutes: 360,
+      },
+      {
+        id: `NH109-${secondLayoverAirport}-${destination}`,
+        flightNumber: "NH109",
+        origin: secondLayoverAirport,
+        destination,
+        departureTime: "16:57",
+        arrivalTime: "18:10",
+        durationMinutes: 283,
+      },
+    ],
+    layovers: [
+      {
+        airport: firstLayoverAirport,
+        durationMinutes: firstLayoverDurationMinutes,
+      },
+      {
+        airport: secondLayoverAirport,
+        durationMinutes: secondLayoverDurationMinutes,
+      },
+    ],
+    totalDurationMinutes:
+      82 +
+      firstLayoverDurationMinutes +
+      360 +
+      secondLayoverDurationMinutes +
+      283,
+  };
+}
+
 export function getMockCashOptionForSearch(
   search: SavedSearch,
 ): CashFlightOption {
@@ -138,6 +253,27 @@ export function getMockCashOptionForSearch(
     stops: isTokyoRoute ? 1 : Math.min(search.maxStops ?? 1, 1),
     cabin: search.cabin,
     cashPriceUsd: cashPriceByPassenger * passengers,
+    routeDetail: isTokyoRoute
+      ? createTwoSegmentRouteDetail({
+          firstDurationMinutes: 120,
+          firstFlightNumber: "UA803",
+          layoverAirport: "ORD",
+          layoverDurationMinutes: 95,
+          origin: getPrimaryOrigin(search),
+          secondDurationMinutes: 660,
+          secondFlightNumber: "NH101",
+          destination: getPrimaryDestination(search),
+        })
+      : createTwoSegmentRouteDetail({
+          firstDurationMinutes: 105,
+          firstFlightNumber: "MOCK100",
+          layoverAirport: "YYZ",
+          layoverDurationMinutes: 90,
+          origin: getPrimaryOrigin(search),
+          secondDurationMinutes: 345,
+          secondFlightNumber: "MOCK200",
+          destination: getPrimaryDestination(search),
+        }),
   };
 }
 
@@ -167,6 +303,16 @@ export function getMockAwardOptionsForSearch(
         transferSources: ["Chase", "Amex", "Capital One"],
         stops: 1,
         durationMinutes: 910,
+        routeDetail: createTwoSegmentRouteDetail({
+          firstDurationMinutes: 345,
+          firstFlightNumber: "AC103",
+          layoverAirport: "YVR",
+          layoverDurationMinutes: 135,
+          origin,
+          secondDurationMinutes: 430,
+          secondFlightNumber: "NH115",
+          destination,
+        }),
         confidence: "high",
         lastCheckedAt: "Mock data",
       },
@@ -185,6 +331,14 @@ export function getMockAwardOptionsForSearch(
         transferSources: ["Chase", "Amex", "Citi"],
         stops: 2,
         durationMinutes: 1030,
+        routeDetail: createThreeSegmentRouteDetail({
+          destination,
+          firstLayoverAirport: "JFK",
+          firstLayoverDurationMinutes: 185,
+          origin,
+          secondLayoverAirport: "LAX",
+          secondLayoverDurationMinutes: 120,
+        }),
         confidence: "medium",
         lastCheckedAt: "Mock data",
       },
@@ -203,6 +357,16 @@ export function getMockAwardOptionsForSearch(
         transferSources: ["Chase", "Bilt"],
         stops: 1,
         durationMinutes: 900,
+        routeDetail: createTwoSegmentRouteDetail({
+          firstDurationMinutes: 355,
+          firstFlightNumber: "UA1738",
+          layoverAirport: "SFO",
+          layoverDurationMinutes: 105,
+          origin,
+          secondDurationMinutes: 440,
+          secondFlightNumber: "UA837",
+          destination,
+        }),
         confidence: "high",
         lastCheckedAt: "Mock data",
       },
@@ -227,6 +391,16 @@ export function getMockAwardOptionsForSearch(
       transferSources: ["Chase", "Amex", "Capital One"],
       stops: 1,
       durationMinutes: 730,
+      routeDetail: createTwoSegmentRouteDetail({
+        firstDurationMinutes: 105,
+        firstFlightNumber: "AC501",
+        layoverAirport: "YYZ",
+        layoverDurationMinutes: 85,
+        origin,
+        secondDurationMinutes: 540,
+        secondFlightNumber: "AC860",
+        destination,
+      }),
       confidence: "medium",
       lastCheckedAt: "Mock data",
     },
@@ -245,6 +419,16 @@ export function getMockAwardOptionsForSearch(
       transferSources: ["Chase", "Amex", "Capital One", "Citi"],
       stops: 1,
       durationMinutes: 790,
+      routeDetail: createTwoSegmentRouteDetail({
+        firstDurationMinutes: 425,
+        firstFlightNumber: "AF27",
+        layoverAirport: "CDG",
+        layoverDurationMinutes: 95,
+        origin,
+        secondDurationMinutes: 270,
+        secondFlightNumber: "AF1680",
+        destination,
+      }),
       confidence: "medium",
       lastCheckedAt: "Mock data",
     },
@@ -263,6 +447,16 @@ export function getMockAwardOptionsForSearch(
       transferSources: ["Chase", "Bilt"],
       stops: Math.min(search.maxStops ?? 1, 1),
       durationMinutes: 705,
+      routeDetail: createTwoSegmentRouteDetail({
+        firstDurationMinutes: 220,
+        firstFlightNumber: "UA909",
+        layoverAirport: "EWR",
+        layoverDurationMinutes: 80,
+        origin,
+        secondDurationMinutes: 405,
+        secondFlightNumber: "UA940",
+        destination,
+      }),
       confidence: "high",
       lastCheckedAt: "Mock data",
     },

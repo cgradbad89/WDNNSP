@@ -15,6 +15,7 @@ export type RecommendationLabel =
 export interface ScoredAwardOption extends AwardFlightOption {
   recommendationLabel: RecommendationLabel;
   score: RecommendationScore;
+  sufficientTransferPathCount?: number;
 }
 
 export interface ScoredCashOption extends CashFlightOption {

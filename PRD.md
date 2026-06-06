@@ -383,11 +383,13 @@ Each result card should include:
 
 - Recommended booking program
 - Transfer source
+- Transfer-required indicators when a flexible-points transfer is needed
 - Points required
 - Taxes and fees
 - Cash comparison
 - Cents-per-point value
 - Stops
+- Stop airport and layover summary when route details are available
 - Cabin
 - Duration
 - Confidence/freshness
@@ -810,9 +812,9 @@ Exit criteria:
 
 Current implementation status as of June 6, 2026:
 
-- Completed: approved design prototype route, revised run-search-first design reference, browser-persistent saved-search localStorage helpers, trip search validation helpers, real `/search` trip search form, airport group expansion during save/validation, inline validation errors, saved-search delete actions, and compact dashboard saved-search summary.
-- Covered by unit tests: saved-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, required search fields, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, and non-negative max stops/flexible days.
-- Remaining: align the real `/search` and `/results` routes with the target run-search-first/save-from-results flow, airport autocomplete beyond curated group datalist, edit saved search, alerts, Firebase persistence, authenticated user ownership, and live provider integrations.
+- Completed: approved design prototype route, revised run-search-first design reference, browser-persistent saved-search localStorage helpers, browser-persistent active-search localStorage helpers, trip search validation helpers, real `/search` trip search form, active-search creation on submit, `/results` navigation after valid search, airport group expansion during validation, inline validation errors, result-page save-search action, and compact dashboard saved-search summary.
+- Covered by unit tests: saved-search and active-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, required search fields, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, active-search selection priority, and non-negative max stops/flexible days.
+- Remaining: airport autocomplete beyond curated group datalist, alerts, Firebase persistence, authenticated user ownership, and live provider integrations.
 
 ---
 
@@ -833,8 +835,8 @@ Exit criteria:
 
 Current implementation status as of June 6, 2026:
 
-- Completed: deterministic mock cash benchmark generation for the real `/results` route, driven by the selected saved search or a Tokyo Spring Trip fallback.
-- Covered by unit tests: cash benchmark use in cents-per-point calculations through the scoring helpers.
+- Completed: deterministic mock cash benchmark generation for the real `/results` route, driven by the active search, first saved search, or a Tokyo Spring Trip fallback, with mock route detail data for cash benchmark cards.
+- Covered by unit tests: cash benchmark use in cents-per-point calculations through the scoring helpers, active-search selection priority, and route-detail duration/summary formatting.
 - Remaining: cash flight provider abstraction, multiple cash options, manual cash entry, Duffel/Amadeus-style live provider integration, and production freshness metadata.
 
 ---
@@ -857,8 +859,8 @@ Exit criteria:
 
 Current implementation status as of June 6, 2026:
 
-- Completed: deterministic mock award options for the real `/results` route, including Tokyo-like Air Canada Aeroplan, Virgin Atlantic Flying Club, and United MileagePlus examples, plus generic route fallback options.
-- Covered by unit tests: award option scoring against wallet balances and transfer partners.
+- Completed: deterministic mock award options for the real `/results` route, including Tokyo-like Air Canada Aeroplan, Virgin Atlantic Flying Club, and United MileagePlus examples, generic route fallback options, route detail data, transfer-required display details, and mock result filters.
+- Covered by unit tests: award option scoring against wallet balances and transfer partners, transfer-path display derivation, and mock result filter behavior.
 - Remaining: award provider abstraction, manual award entry, real award availability providers, production freshness handling, and authenticated persistence.
 
 ---
@@ -881,8 +883,8 @@ Exit criteria:
 
 Current implementation status as of June 6, 2026:
 
-- Completed: cents-per-point calculator, initial weighted award scoring, recommendation labels, explanation/warning builders, and the real `/results` UI that reads local saved searches and wallet balances before falling back to mock data.
-- Covered by unit tests: cents-per-point happy path, taxes/fees subtraction, invalid point and low-value guards, ranking, insufficient-points labeling, confidence scoring, stop-count scoring, label assignment, and required transfer warning behavior.
+- Completed: cents-per-point calculator, initial weighted award scoring, recommendation labels, explanation/warning builders, real `/results` UI that reads active search first, result-page search editing/saving, working mock filters, route detail modals, and required transfer warning display.
+- Covered by unit tests: cents-per-point happy path, taxes/fees subtraction, invalid point and low-value guards, ranking, insufficient-points labeling, confidence scoring, stop-count scoring, label assignment, transfer-path filtering, and required transfer warning behavior.
 - Remaining: scoring tuning with real-world examples, cash-versus-award recommendation thresholds, provider freshness weighting, and live search execution.
 
 ---

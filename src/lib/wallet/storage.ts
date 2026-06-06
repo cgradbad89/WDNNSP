@@ -1,6 +1,7 @@
 import type { PointsAccount } from "@/types/points";
 
 const WALLET_STORAGE_KEY = "wdnnsp.pointsAccounts";
+export const WALLET_ACCOUNTS_CHANGED_EVENT = "wdnnsp.walletAccountsChanged";
 
 function hasBrowserStorage(): boolean {
   return typeof window !== "undefined" && Boolean(window.localStorage);
@@ -62,6 +63,10 @@ export function saveWalletAccounts(accounts: PointsAccount[]): void {
   }
 
   window.localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(accounts));
+
+  if (typeof window.dispatchEvent === "function") {
+    window.dispatchEvent(new CustomEvent(WALLET_ACCOUNTS_CHANGED_EVENT));
+  }
 }
 
 export function createWalletAccount(

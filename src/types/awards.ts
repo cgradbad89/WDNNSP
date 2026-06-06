@@ -1,4 +1,4 @@
-import type { Cabin } from "./flights";
+import type { Cabin, RouteDetail } from "./flights";
 
 export interface AwardFlightOption {
   id: string;
@@ -17,6 +17,7 @@ export interface AwardFlightOption {
   centsPerPoint?: number;
   stops: number;
   durationMinutes?: number;
+  routeDetail?: RouteDetail;
   confidence: "high" | "medium" | "low";
   bookingUrl?: string;
   lastCheckedAt?: string;
