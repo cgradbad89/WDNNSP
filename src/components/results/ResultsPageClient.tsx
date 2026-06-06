@@ -26,7 +26,6 @@ import {
   type TransferPathDisplay,
 } from "@/lib/results/transferPaths";
 import {
-  TRANSFER_WARNING,
   scoreAwardOptions,
   type RecommendationLabel,
   type ScoredAwardOption,
@@ -713,6 +712,9 @@ function TransferPathRows({
           </div>
         ))}
       </div>
+      <p className="mt-3 text-xs font-medium leading-5 text-[#5d4c1d]">
+        Verify award space with the airline before moving points.
+      </p>
     </div>
   );
 }
@@ -1584,10 +1586,6 @@ export function ResultsPageClient(): JSX.Element {
         saveStatus={saveStatus}
         search={selectedSearch}
       />
-
-      <section className="rounded-lg border border-[#ead99d] bg-[#fff9df] p-4 text-sm font-semibold leading-6 text-[#5d4c1d]">
-        {TRANSFER_WARNING}
-      </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">

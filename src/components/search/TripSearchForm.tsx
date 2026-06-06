@@ -13,7 +13,12 @@ import {
   getTotalFlexiblePoints,
 } from "@/lib/points/totals";
 import { saveActiveSearch } from "@/lib/search/activeSearch";
-import { createSavedSearch } from "@/lib/search/storage";
+import {
+  createSavedSearch,
+  deleteSavedSearch,
+  loadSavedSearches,
+  saveSavedSearches,
+} from "@/lib/search/storage";
 import {
   hasSearchValidationErrors,
   type SearchValidationErrors,
@@ -25,7 +30,7 @@ import {
 } from "@/lib/wallet/storage";
 import type { Cabin } from "@/types/flights";
 import type { PointsAccount } from "@/types/points";
-import type { TripType } from "@/types/search";
+import type { SavedSearch, TripType } from "@/types/search";
 
 type SearchFormState = {
   name: string;
@@ -114,6 +119,18 @@ function parseWalletAccountsSnapshot(snapshot: string): PointsAccount[] {
   return createSeedAccounts();
 }
 
+function subscribeToHydration(): () => void {
+  return () => undefined;
+}
+
+function getClientHydrationSnapshot(): boolean {
+  return true;
+}
+
+function getServerHydrationSnapshot(): boolean {
+  return false;
+}
+
 function normalizeSingleCode(value: string): string[] {
   const normalizedValue = value.trim().toUpperCase();
 
@@ -144,8 +161,24 @@ function formatCodes(codes: string[]): string {
   return codes.length > 0 ? codes.join("/") : "Not set";
 }
 
+function formatDate(date: string | undefined): string {
+  if (!date) {
+    return "No date";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(`${date}T00:00:00`));
+}
+
 function formatNumber(value: number): string {
   return numberFormatter.format(value);
+}
+
+function formatTripType(tripType: TripType): string {
+  return tripType === "round_trip" ? "Round trip" : "One way";
 }
 
 function SearchIcon({ className }: { className?: string }) {
@@ -225,10 +258,16 @@ function clearErrorsForField(
 
 export function TripSearchForm(): JSX.Element {
   const router = useRouter();
+  const isLoaded = useSyncExternalStore(
+    subscribeToHydration,
+    getClientHydrationSnapshot,
+    getServerHydrationSnapshot,
+  );
   const [formState, setFormState] =
     useState<SearchFormState>(initialFormState);
   const [errors, setErrors] = useState<SearchValidationErrors>({});
   const [statusMessage, setStatusMessage] = useState("");
+  const [savedSearchVersion, setSavedSearchVersion] = useState(0);
   const walletAccountsSnapshot = useSyncExternalStore(
     subscribeToWalletAccounts,
     getWalletAccountsClientSnapshot,
@@ -248,6 +287,11 @@ export function TripSearchForm(): JSX.Element {
   const topWalletAccounts = [...walletAccounts]
     .toSorted((firstAccount, secondAccount) => secondAccount.balance - firstAccount.balance)
     .slice(0, 3);
+  const savedSearches = useMemo(() => {
+    void savedSearchVersion;
+
+    return isLoaded ? loadSavedSearches() : [];
+  }, [isLoaded, savedSearchVersion]);
 
   function updateField<Field extends keyof SearchFormState>(
     field: Field,
@@ -322,6 +366,18 @@ export function TripSearchForm(): JSX.Element {
     setErrors({});
     setStatusMessage("Search ready. Opening mock results...");
     router.push("/results");
+  }
+
+  function handleRunSavedSearch(search: SavedSearch): void {
+    saveActiveSearch(search);
+    setStatusMessage(`Opening results for "${search.name}".`);
+    router.push("/results");
+  }
+
+  function handleDeleteSavedSearch(searchId: string): void {
+    saveSavedSearches(deleteSavedSearch(savedSearches, searchId));
+    setSavedSearchVersion((currentVersion) => currentVersion + 1);
+    setStatusMessage("Saved search deleted.");
   }
 
   return (
@@ -590,32 +646,6 @@ export function TripSearchForm(): JSX.Element {
         <aside className="space-y-4">
           <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 md:p-6">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
-              Search preview
-            </p>
-            <div className="mt-4 space-y-3">
-              {[
-                ["Route", `${formatCodes(originCodes)} to ${formatCodes(destinationCodes)}`],
-                ["Dates", formState.tripType === "round_trip" ? `${formState.departDate} to ${formState.returnDate || "return TBD"}` : formState.departDate || "No date"],
-                ["Cabin", cabinLabels[formState.cabin]],
-                ["Passengers", formatNumber(passengers || 0)],
-              ].map(([label, value]) => (
-                <div
-                  className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
-                  key={label}
-                >
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#637268]">
-                    {label}
-                  </p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-[#14211b]">
-                    {value}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 md:p-6">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
               Wallet readiness
             </p>
             <div className="mt-4 space-y-3">
@@ -647,6 +677,101 @@ export function TripSearchForm(): JSX.Element {
             </div>
           </section>
         </aside>
+      </section>
+
+      <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 md:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
+              Saved searches
+            </p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[#14211b]">
+              Run a previous trip search
+            </h3>
+          </div>
+          <p className="text-sm text-[#637268]">
+            {isLoaded ? `${savedSearches.length} saved` : "Loading"}
+          </p>
+        </div>
+
+        {isLoaded && savedSearches.length > 0 ? (
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {savedSearches.map((search) => (
+              <article
+                className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
+                key={search.id}
+              >
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[#24382d]">
+                      {search.name}
+                    </p>
+                    <p className="mt-2 text-lg font-semibold tracking-tight text-[#14211b]">
+                      {formatCodes(search.originCodes)} to{" "}
+                      {formatCodes(search.destinationCodes)}
+                    </p>
+                  </div>
+
+                  <dl className="grid gap-3 text-sm leading-6 text-[#526158] sm:grid-cols-2">
+                    <div>
+                      <dt className="font-semibold text-[#24382d]">
+                        Trip type
+                      </dt>
+                      <dd>{formatTripType(search.tripType)}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold text-[#24382d]">Cabin</dt>
+                      <dd>{cabinLabels[search.cabin]}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold text-[#24382d]">Depart</dt>
+                      <dd>{formatDate(search.departDate)}</dd>
+                    </div>
+                    {search.tripType === "round_trip" ? (
+                      <div>
+                        <dt className="font-semibold text-[#24382d]">
+                          Return
+                        </dt>
+                        <dd>{formatDate(search.returnDate)}</dd>
+                      </div>
+                    ) : null}
+                    <div>
+                      <dt className="font-semibold text-[#24382d]">
+                        Passengers
+                      </dt>
+                      <dd>{formatNumber(search.passengers)}</dd>
+                    </div>
+                  </dl>
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      className="inline-flex items-center justify-center gap-2 rounded-md bg-[#2f6b4f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25573f]"
+                      onClick={() => handleRunSavedSearch(search)}
+                      type="button"
+                    >
+                      Run search
+                      <ArrowIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      className="rounded-md border border-[#b8c8b2] px-4 py-2.5 text-sm font-semibold text-[#24382d] transition hover:bg-white"
+                      onClick={() => handleDeleteSavedSearch(search.id)}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+
+        {isLoaded && savedSearches.length === 0 ? (
+          <div className="mt-5 rounded-md border border-dashed border-[#b8c8b2] bg-[#f7faf6] p-5 text-sm leading-6 text-[#526158]">
+            No saved searches yet. Run a new search above, review the results,
+            then save useful trips from the Results page.
+          </div>
+        ) : null}
       </section>
     </div>
   );

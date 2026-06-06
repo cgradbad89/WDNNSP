@@ -753,7 +753,7 @@ Initial route inventory:
 - `/` redirects to `/dashboard`
 - `/dashboard` summarizes browser-persistent wallet totals, transfer opportunities, and required transfer warning
 - `/wallet` supports browser-persistent manual account add/edit/delete with empty-state-ready structure
-- `/search` supports browser-persistent saved trip searches with airport group expansion, inline validation, and delete actions
+- `/search` supports browser-persistent saved trip searches with airport group expansion, inline validation, run-search, and delete actions
 - `/design/search` keeps the design-only run-search-first prototype as a reference
 - `/design/results` keeps the design-only results, edit-search, route-detail, and save-search prototype as a reference
 - `/results` shows deterministic mock cash and award results ranked by the initial recommendation engine
@@ -883,7 +883,7 @@ Exit criteria:
 
 Current implementation status as of June 6, 2026:
 
-- Completed: cents-per-point calculator, initial weighted award scoring, recommendation labels, explanation/warning builders, real `/results` UI that reads active search first, result-page search editing/saving, working mock filters, route detail modals, and required transfer warning display.
+- Completed: cents-per-point calculator, initial weighted award scoring, recommendation labels, explanation/warning builders, real `/results` UI that reads active search first, result-page search editing/saving, working mock filters, route detail modals, and contextual transfer caution on transfer-required details.
 - Covered by unit tests: cents-per-point happy path, taxes/fees subtraction, invalid point and low-value guards, ranking, insufficient-points labeling, confidence scoring, stop-count scoring, label assignment, transfer-path filtering, and required transfer warning behavior.
 - Remaining: scoring tuning with real-world examples, cash-versus-award recommendation thresholds, provider freshness weighting, and live search execution.
 
