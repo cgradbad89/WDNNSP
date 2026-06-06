@@ -195,7 +195,7 @@ Dashboard should show:
 
 Transfer warning:
 
-> Always confirm award availability directly with the airline program before transferring points. Transfers are often irreversible, and award space can disappear.
+> Confirm award availability directly with the airline before transferring points. Transfers are often irreversible, and award space can disappear.
 
 ---
 
@@ -721,6 +721,7 @@ src/
     airports/
     points/
     transferPartners/
+    wallet/
     scoring/
     flightSearch/
     awardSearch/
@@ -744,8 +745,8 @@ src/
 Initial route inventory:
 
 - `/` redirects to `/dashboard`
-- `/dashboard` shows mock wallet totals, transfer opportunities, and required transfer warning
-- `/wallet` shows mock manual points accounts with empty-state-ready structure
+- `/dashboard` summarizes browser-persistent wallet totals, transfer opportunities, and required transfer warning
+- `/wallet` supports browser-persistent manual account add/edit/delete with empty-state-ready structure
 - `/search` shows the trip search placeholder
 - `/results` shows the recommendation results placeholder and transfer warning
 - `/settings` shows the settings placeholder
@@ -776,9 +777,9 @@ Exit criteria:
 
 Current implementation status as of June 6, 2026:
 
-- Completed: app shell, navigation, dashboard route, wallet route, core TypeScript domain types, static points program data, static transfer partner data, airport group data, points total helpers, transfer partner lookup helpers, airport group expansion helpers, and mock wallet/dashboard displays.
-- Covered by unit tests: points balance totals, flexible and airline account filtering, transfer partner lookup, wallet-based transfer option deduping, and airport group expansion.
-- Remaining: authentication, Firebase persistence, wallet add/edit/delete CRUD, production user-specific balances, and live provider integrations.
+- Completed: app shell, navigation, dashboard route, wallet route, core TypeScript domain types, static points program data, static transfer partner data, airport group data, points total helpers, transfer partner lookup helpers, airport group expansion helpers, browser-persistent localStorage wallet add/edit/delete CRUD, and dashboard summaries based on the browser wallet.
+- Covered by unit tests: points balance totals, flexible and airline account filtering, transfer partner lookup, wallet-based transfer option deduping, airport group expansion, and browser wallet storage CRUD helpers.
+- Remaining: authentication, Firebase persistence, production user-specific balances, cross-tab wallet sync, and live provider integrations.
 
 ---
 
