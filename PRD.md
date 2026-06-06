@@ -749,6 +749,7 @@ Initial route inventory:
 - `/wallet` supports browser-persistent manual account add/edit/delete with empty-state-ready structure
 - `/search` supports browser-persistent saved trip searches with airport group expansion, inline validation, and delete actions
 - `/design/search` keeps the approved design-only trip search prototype as a reference
+- `/design/results` keeps the design-only recommendation results prototype as a reference
 - `/results` shows the recommendation results placeholder and transfer warning
 - `/settings` shows the settings placeholder
 
