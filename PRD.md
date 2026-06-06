@@ -750,7 +750,7 @@ Initial route inventory:
 - `/search` supports browser-persistent saved trip searches with airport group expansion, inline validation, and delete actions
 - `/design/search` keeps the approved design-only trip search prototype as a reference
 - `/design/results` keeps the design-only recommendation results prototype as a reference
-- `/results` shows the recommendation results placeholder and transfer warning
+- `/results` shows deterministic mock cash and award results ranked by the initial recommendation engine
 - `/settings` shows the settings placeholder
 
 ---
@@ -827,6 +827,12 @@ Exit criteria:
 - App can show cash benchmark options for a route.
 - App can use cash price in value calculations.
 
+Current implementation status as of June 6, 2026:
+
+- Completed: deterministic mock cash benchmark generation for the real `/results` route, driven by the selected saved search or a Tokyo Spring Trip fallback.
+- Covered by unit tests: cash benchmark use in cents-per-point calculations through the scoring helpers.
+- Remaining: cash flight provider abstraction, multiple cash options, manual cash entry, Duffel/Amadeus-style live provider integration, and production freshness metadata.
+
 ---
 
 ### Phase 4 — Award availability
@@ -845,6 +851,12 @@ Exit criteria:
 - App can show award options.
 - App can tell whether the user can book using existing or transferable points.
 
+Current implementation status as of June 6, 2026:
+
+- Completed: deterministic mock award options for the real `/results` route, including Tokyo-like Air Canada Aeroplan, Virgin Atlantic Flying Club, and United MileagePlus examples, plus generic route fallback options.
+- Covered by unit tests: award option scoring against wallet balances and transfer partners.
+- Remaining: award provider abstraction, manual award entry, real award availability providers, production freshness handling, and authenticated persistence.
+
 ---
 
 ### Phase 5 — Recommendation engine
@@ -862,6 +874,12 @@ Exit criteria:
 - App ranks cash and award options.
 - App explains why each recommendation is good or bad.
 - App clearly warns users before transfers.
+
+Current implementation status as of June 6, 2026:
+
+- Completed: cents-per-point calculator, initial weighted award scoring, recommendation labels, explanation/warning builders, and the real `/results` UI that reads local saved searches and wallet balances before falling back to mock data.
+- Covered by unit tests: cents-per-point happy path, taxes/fees subtraction, invalid point and low-value guards, ranking, insufficient-points labeling, confidence scoring, stop-count scoring, label assignment, and required transfer warning behavior.
+- Remaining: scoring tuning with real-world examples, cash-versus-award recommendation thresholds, provider freshness weighting, and live search execution.
 
 ---
 
