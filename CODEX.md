@@ -6,6 +6,13 @@ We Dont Need No Sticken Points (WDNNSP) is a personal web app for evaluating cre
 
 The source of truth is `PRD.md`.
 
+Confirmed project references:
+
+- Local repo: `/Users/johnfolstrom/Desktop/WDNNSP`
+- GitHub repo: `https://github.com/cgradbad89/WDNNSP`
+- Vercel production URL: `https://wdnnsp-e63d.vercel.app`
+- Production dashboard URL: `https://wdnnsp-e63d.vercel.app/dashboard`
+
 Before making changes, read:
 
 1. `PRD.md`
