@@ -747,7 +747,8 @@ Initial route inventory:
 - `/` redirects to `/dashboard`
 - `/dashboard` summarizes browser-persistent wallet totals, transfer opportunities, and required transfer warning
 - `/wallet` supports browser-persistent manual account add/edit/delete with empty-state-ready structure
-- `/search` shows the trip search placeholder
+- `/search` supports browser-persistent saved trip searches with airport group expansion, inline validation, and delete actions
+- `/design/search` keeps the approved design-only trip search prototype as a reference
 - `/results` shows the recommendation results placeholder and transfer warning
 - `/settings` shows the settings placeholder
 
@@ -801,6 +802,12 @@ Exit criteria:
 - User can create a trip search.
 - App can expand airport groups into airport codes.
 - Search can be saved.
+
+Current implementation status as of June 6, 2026:
+
+- Completed: approved design prototype route, browser-persistent saved-search localStorage helpers, trip search validation helpers, real `/search` trip search form, airport group expansion during save/validation, inline validation errors, saved-search delete actions, and compact dashboard saved-search summary.
+- Covered by unit tests: saved-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, required search fields, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, and non-negative max stops/flexible days.
+- Remaining: airport autocomplete beyond curated group datalist, edit saved search, mock cash provider, mock award provider, recommendation engine, alerts, Firebase persistence, authenticated user ownership, and live provider integrations.
 
 ---
 
@@ -884,6 +891,7 @@ Exit criteria:
 
 ### Trip search
 
+- Search name is required for saved searches.
 - Origin is required.
 - Destination is required.
 - Origin and destination cannot be identical.
@@ -892,6 +900,8 @@ Exit criteria:
 - Return date cannot be before departure date.
 - Passengers must be at least 1.
 - Cabin is required.
+- Max stops, if provided, must be zero or greater.
+- Flexible days, if provided, must be zero or greater.
 
 ### Award options
 

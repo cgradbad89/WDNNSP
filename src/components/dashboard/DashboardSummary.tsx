@@ -9,15 +9,23 @@ import {
   getTotalAirlineMiles,
   getTotalFlexiblePoints,
 } from "@/lib/points/totals";
+import { loadSavedSearches } from "@/lib/search/storage";
 import { getTransferOptionsFromWallet } from "@/lib/transferPartners/lookup";
 import {
   hasStoredWalletAccounts,
   loadWalletAccounts,
 } from "@/lib/wallet/storage";
 import type { PointsAccount } from "@/types/points";
+import type { SavedSearch } from "@/types/search";
 
 const LOCAL_USER_ID = "local-user";
 const numberFormatter = new Intl.NumberFormat("en-US");
+const cabinLabels = {
+  business: "Business",
+  economy: "Economy",
+  first: "First",
+  premium_economy: "Premium economy",
+} as const;
 
 function createSeedAccounts(): PointsAccount[] {
   return MOCK_POINTS_ACCOUNTS.map((account) => ({
@@ -60,6 +68,30 @@ function formatTransferRatio(transferRatio: number): string {
   return `${transferRatio}:1`;
 }
 
+function formatCodes(codes: string[]): string {
+  return codes.length > 0 ? codes.join("/") : "Not set";
+}
+
+function formatDate(date: string | undefined): string {
+  if (!date) {
+    return "No date";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(`${date}T00:00:00`));
+}
+
+function formatDateRange(search: SavedSearch): string {
+  if (search.tripType === "one_way") {
+    return formatDate(search.departDate);
+  }
+
+  return `${formatDate(search.departDate)} - ${formatDate(search.returnDate)}`;
+}
+
 export function DashboardSummary(): JSX.Element {
   const isLoaded = useSyncExternalStore(
     subscribeToHydration,
@@ -82,6 +114,10 @@ export function DashboardSummary(): JSX.Element {
     () => getTransferOptionsFromWallet(accounts, TRANSFER_PARTNERS),
     [accounts],
   );
+  const savedSearches = useMemo(
+    () => (isLoaded ? loadSavedSearches() : []),
+    [isLoaded],
+  );
   const summaryCards = [
     {
       label: "Flexible points",
@@ -97,6 +133,11 @@ export function DashboardSummary(): JSX.Element {
       label: "Transfer options",
       value: numberFormatter.format(transferOptions.length),
       note: "Active direct partners available from this wallet.",
+    },
+    {
+      label: "Saved searches",
+      value: numberFormatter.format(savedSearches.length),
+      note: "Trip criteria saved locally in this browser.",
     },
   ];
 
@@ -143,7 +184,7 @@ export function DashboardSummary(): JSX.Element {
         </aside>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-4">
         {summaryCards.map((card) => (
           <article
             className="rounded-lg border border-[#d9e2d6] bg-white p-5"
@@ -158,6 +199,54 @@ export function DashboardSummary(): JSX.Element {
             </p>
           </article>
         ))}
+      </section>
+
+      <section className="rounded-lg border border-[#d9e2d6] bg-white p-6">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
+              Saved searches
+            </p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight">
+              Recent trip criteria
+            </h2>
+          </div>
+          <Link
+            className="rounded-md border border-[#b8c8b2] px-4 py-2 text-sm font-semibold text-[#24382d] hover:bg-[#edf3ea]"
+            href="/search"
+          >
+            Open search
+          </Link>
+        </div>
+
+        {savedSearches.length > 0 ? (
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {savedSearches.slice(0, 4).map((search) => (
+              <article
+                className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
+                key={search.id}
+              >
+                <p className="text-sm font-semibold text-[#24382d]">
+                  {search.name}
+                </p>
+                <p className="mt-2 text-lg font-semibold tracking-tight">
+                  {formatCodes(search.originCodes)} to{" "}
+                  {formatCodes(search.destinationCodes)}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[#637268]">
+                  {formatDateRange(search)} - {search.passengers} passenger
+                  {search.passengers === 1 ? "" : "s"} -{" "}
+                  {cabinLabels[search.cabin]}
+                </p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-5 rounded-md border border-dashed border-[#b8c8b2] p-5 text-sm leading-6 text-[#526158]">
+            No saved searches yet. Create one from the search page so it appears
+            here before results and alerts are added.
+          </div>
+        )}
       </section>
 
       <section className="rounded-lg border border-[#d9e2d6] bg-white p-6">
