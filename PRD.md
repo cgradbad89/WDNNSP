@@ -719,6 +719,7 @@ src/
   lib/
     firebase/
     airports/
+    points/
     transferPartners/
     scoring/
     flightSearch/
@@ -735,6 +736,7 @@ src/
   data/
     airports.ts
     airportGroups.ts
+    mockPointsAccounts.ts
     pointsPrograms.ts
     transferPartners.ts
 ```
@@ -742,8 +744,8 @@ src/
 Initial route inventory:
 
 - `/` redirects to `/dashboard`
-- `/dashboard` shows the dashboard placeholder and required transfer warning
-- `/wallet` shows the manual points wallet placeholder
+- `/dashboard` shows mock wallet totals, transfer opportunities, and required transfer warning
+- `/wallet` shows mock manual points accounts with empty-state-ready structure
 - `/search` shows the trip search placeholder
 - `/results` shows the recommendation results placeholder and transfer warning
 - `/settings` shows the settings placeholder
@@ -771,6 +773,12 @@ Exit criteria:
 - User can add/edit/delete points balances.
 - Dashboard summarizes points balances.
 - App shows transfer options for flexible currencies.
+
+Current implementation status as of June 6, 2026:
+
+- Completed: app shell, navigation, dashboard route, wallet route, core TypeScript domain types, static points program data, static transfer partner data, airport group data, points total helpers, transfer partner lookup helpers, airport group expansion helpers, and mock wallet/dashboard displays.
+- Covered by unit tests: points balance totals, flexible and airline account filtering, transfer partner lookup, wallet-based transfer option deduping, and airport group expansion.
+- Remaining: authentication, Firebase persistence, wallet add/edit/delete CRUD, production user-specific balances, and live provider integrations.
 
 ---
 

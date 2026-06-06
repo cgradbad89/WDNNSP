@@ -1,0 +1,50 @@
+import type { PointsAccount } from "@/types/points";
+
+export const MOCK_POINTS_ACCOUNTS: PointsAccount[] = [
+  {
+    id: "mock-chase-ultimate-rewards",
+    userId: "mock-user-john",
+    programId: "chase-ultimate-rewards",
+    programName: "Chase Ultimate Rewards",
+    programType: "credit_card",
+    balance: 128000,
+    lastUpdatedAt: "2026-06-01",
+    notes: "Manual mock balance for the initial wallet shell.",
+  },
+  {
+    id: "mock-amex-membership-rewards",
+    userId: "mock-user-john",
+    programId: "american-express-membership-rewards",
+    programName: "American Express Membership Rewards",
+    programType: "credit_card",
+    balance: 94000,
+    lastUpdatedAt: "2026-06-02",
+  },
+  {
+    id: "mock-bilt-rewards",
+    userId: "mock-user-john",
+    programId: "bilt-rewards",
+    programName: "Bilt Rewards",
+    programType: "credit_card",
+    balance: 26000,
+    lastUpdatedAt: "2026-05-28",
+  },
+  {
+    id: "mock-united-mileageplus",
+    userId: "mock-user-john",
+    programId: "united-mileageplus",
+    programName: "United MileagePlus",
+    programType: "airline",
+    balance: 44000,
+    lastUpdatedAt: "2026-06-03",
+  },
+  {
+    id: "mock-air-canada-aeroplan",
+    userId: "mock-user-john",
+    programId: "air-canada-aeroplan",
+    programName: "Air Canada Aeroplan",
+    programType: "airline",
+    balance: 18500,
+    lastUpdatedAt: "2026-05-30",
+  },
+];
