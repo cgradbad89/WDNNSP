@@ -203,6 +203,9 @@ Transfer warning:
 
 Users should be able to enter a desired flight search.
 
+Target flow: the search page runs a trip search. Saving should happen from the
+results page after the user sees whether the comparison is useful.
+
 Fields:
 
 - Origin airport or airport group
@@ -410,7 +413,8 @@ Results should include labels such as:
 
 #### 5.10 Saved Searches
 
-Users should be able to save trip searches.
+Users should be able to save useful trip searches from the results page after
+reviewing mock or real comparison results.
 
 Saved search fields:
 
@@ -748,8 +752,8 @@ Initial route inventory:
 - `/dashboard` summarizes browser-persistent wallet totals, transfer opportunities, and required transfer warning
 - `/wallet` supports browser-persistent manual account add/edit/delete with empty-state-ready structure
 - `/search` supports browser-persistent saved trip searches with airport group expansion, inline validation, and delete actions
-- `/design/search` keeps the approved design-only trip search prototype as a reference
-- `/design/results` keeps the design-only recommendation results prototype as a reference
+- `/design/search` keeps the design-only run-search-first prototype as a reference
+- `/design/results` keeps the design-only results, edit-search, route-detail, and save-search prototype as a reference
 - `/results` shows deterministic mock cash and award results ranked by the initial recommendation engine
 - `/settings` shows the settings placeholder
 
@@ -806,9 +810,9 @@ Exit criteria:
 
 Current implementation status as of June 6, 2026:
 
-- Completed: approved design prototype route, browser-persistent saved-search localStorage helpers, trip search validation helpers, real `/search` trip search form, airport group expansion during save/validation, inline validation errors, saved-search delete actions, and compact dashboard saved-search summary.
+- Completed: approved design prototype route, revised run-search-first design reference, browser-persistent saved-search localStorage helpers, trip search validation helpers, real `/search` trip search form, airport group expansion during save/validation, inline validation errors, saved-search delete actions, and compact dashboard saved-search summary.
 - Covered by unit tests: saved-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, required search fields, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, and non-negative max stops/flexible days.
-- Remaining: airport autocomplete beyond curated group datalist, edit saved search, mock cash provider, mock award provider, recommendation engine, alerts, Firebase persistence, authenticated user ownership, and live provider integrations.
+- Remaining: align the real `/search` and `/results` routes with the target run-search-first/save-from-results flow, airport autocomplete beyond curated group datalist, edit saved search, alerts, Firebase persistence, authenticated user ownership, and live provider integrations.
 
 ---
 
