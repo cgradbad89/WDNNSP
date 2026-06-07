@@ -14,7 +14,8 @@ export function getTransferPartnersForProgram(
   return partners.filter(
     (partner) =>
       partner.isActive &&
-      normalizeProgramName(partner.fromProgram) === normalizedFromProgram,
+      (partner.fromProgramId === fromProgram ||
+        normalizeProgramName(partner.fromProgram) === normalizedFromProgram),
   );
 }
 
@@ -27,17 +28,23 @@ export function getTransferOptionsFromWallet(
       .filter((account) => account.programType === "credit_card")
       .map((account) => normalizeProgramName(account.programName)),
   );
+  const flexibleProgramIds = new Set(
+    accounts
+      .filter((account) => account.programType === "credit_card")
+      .map((account) => account.programId),
+  );
   const seenOptions = new Set<string>();
 
   return partners.filter((partner) => {
     if (
       !partner.isActive ||
-      !flexibleProgramNames.has(normalizeProgramName(partner.fromProgram))
+      (!flexibleProgramIds.has(partner.fromProgramId) &&
+        !flexibleProgramNames.has(normalizeProgramName(partner.fromProgram)))
     ) {
       return false;
     }
 
-    const optionKey = `${normalizeProgramName(partner.fromProgram)}:${normalizeProgramName(partner.toProgram)}`;
+    const optionKey = `${partner.fromProgramId}:${partner.toProgramId}`;
 
     if (seenOptions.has(optionKey)) {
       return false;

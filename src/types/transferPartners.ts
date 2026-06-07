@@ -7,6 +7,8 @@ export type EstimatedTransferTime =
 
 export interface TransferPartner {
   id: string;
+  fromProgramId: string;
+  toProgramId: string;
   fromProgram: string;
   toProgram: string;
   transferRatio: number;

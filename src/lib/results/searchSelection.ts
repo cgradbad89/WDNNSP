@@ -1,7 +1,7 @@
-import type { SavedSearch } from "@/types/search";
+import type { ActiveSearch, SavedSearch } from "@/types/search";
 
 export function selectResultsSearch(
-  activeSearch: SavedSearch | undefined,
+  activeSearch: ActiveSearch | undefined,
   savedSearches: SavedSearch[],
   fallbackSearch: SavedSearch,
 ): SavedSearch {

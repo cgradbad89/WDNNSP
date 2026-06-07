@@ -153,6 +153,8 @@ The app should maintain a typed transfer partner table.
 
 Each transfer partner should include:
 
+- Durable source program ID
+- Durable destination program ID
 - Source program
 - Destination program
 - Transfer ratio
@@ -166,6 +168,8 @@ Example:
 ```ts
 type TransferPartner = {
   id: string;
+  fromProgramId: string;
+  toProgramId: string;
   fromProgram: string;
   toProgram: string;
   transferRatio: number;

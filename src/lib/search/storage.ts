@@ -1,4 +1,9 @@
 import type { SavedSearch } from "@/types/search";
+import {
+  createPersistedEnvelope,
+  unwrapPersistedEnvelope,
+} from "@/lib/persistence/schema";
+import { isSavedSearchArray } from "@/lib/search/validators";
 
 const SAVED_SEARCHES_STORAGE_KEY = "wdnnsp.savedSearches";
 
@@ -12,6 +17,13 @@ function createClientId(): string {
   }
 
   return `search-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function parseSavedSearches(value: unknown): SavedSearch[] | undefined {
+  return (
+    unwrapPersistedEnvelope(value, isSavedSearchArray) ??
+    (isSavedSearchArray(value) ? value : undefined)
+  );
 }
 
 export function loadSavedSearches(): SavedSearch[] {
@@ -28,11 +40,7 @@ export function loadSavedSearches(): SavedSearch[] {
 
     const parsedValue: unknown = JSON.parse(storedValue);
 
-    if (!Array.isArray(parsedValue)) {
-      return [];
-    }
-
-    return parsedValue as SavedSearch[];
+    return parseSavedSearches(parsedValue) ?? [];
   } catch {
     return [];
   }
@@ -45,7 +53,7 @@ export function saveSavedSearches(searches: SavedSearch[]): void {
 
   window.localStorage.setItem(
     SAVED_SEARCHES_STORAGE_KEY,
-    JSON.stringify(searches),
+    JSON.stringify(createPersistedEnvelope(searches)),
   );
 }
 

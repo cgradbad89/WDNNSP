@@ -89,6 +89,46 @@ describe("wallet storage", () => {
     expect(loadWalletAccounts()).toEqual(accounts);
   });
 
+  it("stores saved accounts in a versioned envelope", () => {
+    const localStorage = installWindowWithStorage();
+    saveWalletAccounts(accounts);
+
+    expect(JSON.parse(localStorage.getItem("wdnnsp.pointsAccounts") ?? "")).toEqual({
+      version: 1,
+      data: accounts,
+    });
+  });
+
+  it("loads old unwrapped account arrays for backward compatibility", () => {
+    const localStorage = installWindowWithStorage();
+    localStorage.setItem("wdnnsp.pointsAccounts", JSON.stringify(accounts));
+
+    expect(loadWalletAccounts()).toEqual(accounts);
+    expect(hasStoredWalletAccounts()).toBe(true);
+  });
+
+  it("rejects malformed-but-valid JSON account arrays", () => {
+    const localStorage = installWindowWithStorage();
+    localStorage.setItem(
+      "wdnnsp.pointsAccounts",
+      JSON.stringify([{ id: "missing-wallet-fields" }]),
+    );
+
+    expect(loadWalletAccounts()).toEqual([]);
+    expect(hasStoredWalletAccounts()).toBe(false);
+  });
+
+  it("rejects envelopes with invalid versions", () => {
+    const localStorage = installWindowWithStorage();
+    localStorage.setItem(
+      "wdnnsp.pointsAccounts",
+      JSON.stringify({ version: 0, data: accounts }),
+    );
+
+    expect(loadWalletAccounts()).toEqual([]);
+    expect(hasStoredWalletAccounts()).toBe(false);
+  });
+
   it("detects saved wallet storage even when the wallet is empty", () => {
     installWindowWithStorage();
     saveWalletAccounts([]);

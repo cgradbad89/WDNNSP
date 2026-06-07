@@ -73,6 +73,43 @@ describe("active search storage", () => {
     expect(loadActiveSearch()).toEqual(search);
   });
 
+  it("stores active search in a versioned envelope", () => {
+    const localStorage = installWindowWithStorage();
+    saveActiveSearch(search);
+
+    expect(JSON.parse(localStorage.getItem("wdnnsp.activeSearch") ?? "")).toEqual({
+      version: 1,
+      data: search,
+    });
+  });
+
+  it("loads old unwrapped active search for backward compatibility", () => {
+    const localStorage = installWindowWithStorage();
+    localStorage.setItem("wdnnsp.activeSearch", JSON.stringify(search));
+
+    expect(loadActiveSearch()).toEqual(search);
+  });
+
+  it("rejects malformed-but-valid JSON active search objects", () => {
+    const localStorage = installWindowWithStorage();
+    localStorage.setItem(
+      "wdnnsp.activeSearch",
+      JSON.stringify({ id: "missing-search-fields" }),
+    );
+
+    expect(loadActiveSearch()).toBeUndefined();
+  });
+
+  it("rejects active search envelopes with invalid versions", () => {
+    const localStorage = installWindowWithStorage();
+    localStorage.setItem(
+      "wdnnsp.activeSearch",
+      JSON.stringify({ version: 0, data: search }),
+    );
+
+    expect(loadActiveSearch()).toBeUndefined();
+  });
+
   it("clears the active search", () => {
     installWindowWithStorage();
     saveActiveSearch(search);

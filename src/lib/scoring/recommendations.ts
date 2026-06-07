@@ -58,6 +58,14 @@ function normalizeProgramName(programName: string): string {
   return programName.trim().toLowerCase();
 }
 
+function addProgramBalance(
+  balances: Map<string, number>,
+  key: string,
+  balance: number,
+): void {
+  balances.set(key, (balances.get(key) ?? 0) + balance);
+}
+
 function createProgramBalanceMap(
   accounts: PointsAccount[],
   programType: PointsAccount["programType"],
@@ -69,11 +77,35 @@ function createProgramBalanceMap(
       continue;
     }
 
-    const programName = normalizeProgramName(account.programName);
-    balances.set(programName, (balances.get(programName) ?? 0) + account.balance);
+    addProgramBalance(balances, account.programId, account.balance);
+    addProgramBalance(
+      balances,
+      normalizeProgramName(account.programName),
+      account.balance,
+    );
   }
 
   return balances;
+}
+
+function getProgramBalance(
+  balances: Map<string, number>,
+  programId: string,
+  programName: string,
+): number {
+  return (
+    balances.get(programId) ?? balances.get(normalizeProgramName(programName)) ?? 0
+  );
+}
+
+function matchesAwardProgram(
+  partner: TransferPartner,
+  awardProgram: string,
+): boolean {
+  return (
+    partner.toProgramId === awardProgram ||
+    normalizeProgramName(partner.toProgram) === normalizeProgramName(awardProgram)
+  );
 }
 
 function getValueScore(centsPerPoint: number): number {
@@ -119,37 +151,38 @@ function getTransferBalances(
   flexibleBalances: Map<string, number>,
   transferPartners: TransferPartner[],
 ): TransferBalance[] {
-  const transferBalances = new Map<string, number>();
-  const normalizedAwardProgram = normalizeProgramName(awardOption.airlineProgram);
+  const transferBalances = new Map<string, TransferBalance>();
 
   for (const partner of transferPartners) {
     if (
       !partner.isActive ||
-      normalizeProgramName(partner.toProgram) !== normalizedAwardProgram
+      !matchesAwardProgram(partner, awardOption.airlineProgram)
     ) {
       continue;
     }
 
-    const normalizedSourceProgram = normalizeProgramName(partner.fromProgram);
-    const sourceBalance = flexibleBalances.get(normalizedSourceProgram) ?? 0;
+    const sourceBalance = getProgramBalance(
+      flexibleBalances,
+      partner.fromProgramId,
+      partner.fromProgram,
+    );
 
     if (sourceBalance <= 0) {
       continue;
     }
 
     const convertedBalance = sourceBalance * partner.transferRatio;
-    transferBalances.set(
-      normalizedSourceProgram,
-      Math.max(transferBalances.get(normalizedSourceProgram) ?? 0, convertedBalance),
-    );
+    const currentBalance = transferBalances.get(partner.fromProgramId);
+
+    if (!currentBalance || convertedBalance > currentBalance.convertedBalance) {
+      transferBalances.set(partner.fromProgramId, {
+        fromProgram: partner.fromProgram,
+        convertedBalance,
+      });
+    }
   }
 
-  return Array.from(transferBalances.entries()).map(
-    ([fromProgram, convertedBalance]) => ({
-      fromProgram,
-      convertedBalance,
-    }),
-  );
+  return Array.from(transferBalances.values());
 }
 
 function getPointsFit(
@@ -159,8 +192,11 @@ function getPointsFit(
 ): PointsFit {
   const airlineBalances = createProgramBalanceMap(accounts, "airline");
   const flexibleBalances = createProgramBalanceMap(accounts, "credit_card");
-  const directBalance =
-    airlineBalances.get(normalizeProgramName(awardOption.airlineProgram)) ?? 0;
+  const directBalance = getProgramBalance(
+    airlineBalances,
+    awardOption.airlineProgram,
+    awardOption.airlineProgram,
+  );
   const transferBalances = getTransferBalances(
     awardOption,
     flexibleBalances,

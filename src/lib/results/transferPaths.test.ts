@@ -7,7 +7,7 @@ const accounts: PointsAccount[] = [
   {
     id: "chase",
     userId: "local-user",
-    programId: "chase",
+    programId: "chase-ultimate-rewards",
     programName: "Chase Ultimate Rewards",
     programType: "credit_card",
     balance: 125000,
@@ -16,7 +16,7 @@ const accounts: PointsAccount[] = [
   {
     id: "amex",
     userId: "local-user",
-    programId: "amex",
+    programId: "american-express-membership-rewards",
     programName: "American Express Membership Rewards",
     programType: "credit_card",
     balance: 60000,
@@ -25,7 +25,7 @@ const accounts: PointsAccount[] = [
   {
     id: "united",
     userId: "local-user",
-    programId: "united",
+    programId: "united-mileageplus",
     programName: "United MileagePlus",
     programType: "airline",
     balance: 250000,
@@ -36,6 +36,8 @@ const accounts: PointsAccount[] = [
 const partners: TransferPartner[] = [
   {
     id: "chase-aeroplan",
+    fromProgramId: "chase-ultimate-rewards",
+    toProgramId: "air-canada-aeroplan",
     fromProgram: "Chase Ultimate Rewards",
     toProgram: "Air Canada Aeroplan",
     transferRatio: 1,
@@ -44,6 +46,8 @@ const partners: TransferPartner[] = [
   },
   {
     id: "amex-aeroplan",
+    fromProgramId: "american-express-membership-rewards",
+    toProgramId: "air-canada-aeroplan",
     fromProgram: "American Express Membership Rewards",
     toProgram: "Air Canada Aeroplan",
     transferRatio: 1,
@@ -52,6 +56,8 @@ const partners: TransferPartner[] = [
   },
   {
     id: "inactive-aeroplan",
+    fromProgramId: "capital-one-miles",
+    toProgramId: "air-canada-aeroplan",
     fromProgram: "Capital One Miles",
     toProgram: "Air Canada Aeroplan",
     transferRatio: 1,
@@ -60,6 +66,8 @@ const partners: TransferPartner[] = [
   },
   {
     id: "chase-united",
+    fromProgramId: "chase-ultimate-rewards",
+    toProgramId: "united-mileageplus",
     fromProgram: "Chase Ultimate Rewards",
     toProgram: "United MileagePlus",
     transferRatio: 1,
@@ -118,6 +126,8 @@ describe("transfer path displays", () => {
       [
         {
           id: "amex-emirates",
+          fromProgramId: "american-express-membership-rewards",
+          toProgramId: "emirates-skywards",
           fromProgram: "American Express Membership Rewards",
           toProgram: "Emirates Skywards",
           transferRatio: 0.8,
@@ -132,5 +142,22 @@ describe("transfer path displays", () => {
       isSufficient: false,
       transferRatio: 0.8,
     });
+  });
+
+  it("matches destination and wallet source program IDs", () => {
+    const displays = getTransferPathDisplays(
+      "air-canada-aeroplan",
+      100000,
+      [
+        {
+          ...accounts[0],
+          programName: "Legacy Chase Label",
+        },
+      ],
+      partners,
+    );
+
+    expect(displays).toHaveLength(1);
+    expect(displays[0].fromProgram).toBe("Chase Ultimate Rewards");
   });
 });

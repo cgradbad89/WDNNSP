@@ -28,7 +28,7 @@ const accounts: PointsAccount[] = [
   {
     id: "account-chase",
     userId: "local-user",
-    programId: "chase",
+    programId: "chase-ultimate-rewards",
     programName: "Chase Ultimate Rewards",
     programType: "credit_card",
     balance: 130000,
@@ -37,7 +37,7 @@ const accounts: PointsAccount[] = [
   {
     id: "account-united",
     userId: "local-user",
-    programId: "united",
+    programId: "united-mileageplus",
     programName: "United MileagePlus",
     programType: "airline",
     balance: 60000,
@@ -48,6 +48,8 @@ const accounts: PointsAccount[] = [
 const transferPartners: TransferPartner[] = [
   {
     id: "chase-aeroplan",
+    fromProgramId: "chase-ultimate-rewards",
+    toProgramId: "air-canada-aeroplan",
     fromProgram: "Chase Ultimate Rewards",
     toProgram: "Air Canada Aeroplan",
     transferRatio: 1,
@@ -56,6 +58,8 @@ const transferPartners: TransferPartner[] = [
   },
   {
     id: "chase-virgin",
+    fromProgramId: "chase-ultimate-rewards",
+    toProgramId: "virgin-atlantic-flying-club",
     fromProgram: "Chase Ultimate Rewards",
     toProgram: "Virgin Atlantic Flying Club",
     transferRatio: 1,
@@ -64,6 +68,8 @@ const transferPartners: TransferPartner[] = [
   },
   {
     id: "chase-united",
+    fromProgramId: "chase-ultimate-rewards",
+    toProgramId: "united-mileageplus",
     fromProgram: "Chase Ultimate Rewards",
     toProgram: "United MileagePlus",
     transferRatio: 1,
@@ -263,5 +269,55 @@ describe("scoreAwardOptions", () => {
     );
 
     expect(result.warnings).toContain(TRANSFER_WARNING);
+  });
+
+  it("matches direct airline balances by program ID", () => {
+    const result = scoreAwardOptions(
+      [
+        createAwardOption({
+          id: "united-id",
+          airlineProgram: "united-mileageplus",
+          pointsRequired: 50000,
+        }),
+      ],
+      cashOption,
+      [
+        {
+          ...accounts[1],
+          programName: "Legacy United Label",
+        },
+      ],
+      transferPartners,
+    );
+
+    expect(result.rankedAwardOptions[0].score.pointsFitScore).toBe(100);
+    expect(result.rankedAwardOptions[0].recommendationLabel).toBe("best_overall");
+  });
+
+  it("matches transferable balances by program ID and preserves name fallback", () => {
+    const renamedAccount: PointsAccount = {
+      ...accounts[0],
+      programName: "Legacy Chase Label",
+    };
+    const legacyAccount: PointsAccount = {
+      ...accounts[0],
+      programId: "legacy-chase-id",
+    };
+
+    const idResult = scoreAwardOptions(
+      [createAwardOption({ id: "aeroplan-id" })],
+      cashOption,
+      [renamedAccount],
+      transferPartners,
+    );
+    const fallbackResult = scoreAwardOptions(
+      [createAwardOption({ id: "aeroplan-name" })],
+      cashOption,
+      [legacyAccount],
+      transferPartners,
+    );
+
+    expect(idResult.rankedAwardOptions[0].score.pointsFitScore).toBe(100);
+    expect(fallbackResult.rankedAwardOptions[0].score.pointsFitScore).toBe(100);
   });
 });

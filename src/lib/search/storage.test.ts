@@ -99,6 +99,43 @@ describe("saved search storage", () => {
     expect(loadSavedSearches()).toEqual(searches);
   });
 
+  it("stores saved searches in a versioned envelope", () => {
+    const localStorage = installWindowWithStorage();
+    saveSavedSearches(searches);
+
+    expect(JSON.parse(localStorage.getItem("wdnnsp.savedSearches") ?? "")).toEqual({
+      version: 1,
+      data: searches,
+    });
+  });
+
+  it("loads old unwrapped saved-search arrays for backward compatibility", () => {
+    const localStorage = installWindowWithStorage();
+    localStorage.setItem("wdnnsp.savedSearches", JSON.stringify(searches));
+
+    expect(loadSavedSearches()).toEqual(searches);
+  });
+
+  it("rejects malformed-but-valid JSON saved-search arrays", () => {
+    const localStorage = installWindowWithStorage();
+    localStorage.setItem(
+      "wdnnsp.savedSearches",
+      JSON.stringify([{ id: "missing-search-fields" }]),
+    );
+
+    expect(loadSavedSearches()).toEqual([]);
+  });
+
+  it("rejects saved-search envelopes with invalid versions", () => {
+    const localStorage = installWindowWithStorage();
+    localStorage.setItem(
+      "wdnnsp.savedSearches",
+      JSON.stringify({ version: 0, data: searches }),
+    );
+
+    expect(loadSavedSearches()).toEqual([]);
+  });
+
   it("create saved search adds id, createdAt, and updatedAt", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-06T12:00:00.000Z"));

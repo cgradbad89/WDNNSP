@@ -1,4 +1,9 @@
 import type { PointsAccount } from "@/types/points";
+import {
+  createPersistedEnvelope,
+  unwrapPersistedEnvelope,
+} from "@/lib/persistence/schema";
+import { isPointsAccountArray } from "@/lib/wallet/validators";
 
 const WALLET_STORAGE_KEY = "wdnnsp.pointsAccounts";
 export const WALLET_ACCOUNTS_CHANGED_EVENT = "wdnnsp.walletAccountsChanged";
@@ -15,6 +20,13 @@ function createClientId(): string {
   return `wallet-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function parseWalletAccounts(value: unknown): PointsAccount[] | undefined {
+  return (
+    unwrapPersistedEnvelope(value, isPointsAccountArray) ??
+    (isPointsAccountArray(value) ? value : undefined)
+  );
+}
+
 export function loadWalletAccounts(): PointsAccount[] {
   if (!hasBrowserStorage()) {
     return [];
@@ -29,11 +41,7 @@ export function loadWalletAccounts(): PointsAccount[] {
 
     const parsedValue: unknown = JSON.parse(storedValue);
 
-    if (!Array.isArray(parsedValue)) {
-      return [];
-    }
-
-    return parsedValue as PointsAccount[];
+    return parseWalletAccounts(parsedValue) ?? [];
   } catch {
     return [];
   }
@@ -51,7 +59,9 @@ export function hasStoredWalletAccounts(): boolean {
       return false;
     }
 
-    return Array.isArray(JSON.parse(storedValue));
+    const parsedValue: unknown = JSON.parse(storedValue);
+
+    return parseWalletAccounts(parsedValue) !== undefined;
   } catch {
     return false;
   }
@@ -62,7 +72,10 @@ export function saveWalletAccounts(accounts: PointsAccount[]): void {
     return;
   }
 
-  window.localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(accounts));
+  window.localStorage.setItem(
+    WALLET_STORAGE_KEY,
+    JSON.stringify(createPersistedEnvelope(accounts)),
+  );
 
   if (typeof window.dispatchEvent === "function") {
     window.dispatchEvent(new CustomEvent(WALLET_ACCOUNTS_CHANGED_EVENT));

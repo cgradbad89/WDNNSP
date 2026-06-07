@@ -14,6 +14,34 @@ function normalizeProgram(program: string): string {
   return program.trim().toLowerCase();
 }
 
+function addBalance(
+  balances: Map<string, number>,
+  key: string,
+  balance: number,
+): void {
+  balances.set(key, (balances.get(key) ?? 0) + balance);
+}
+
+function getBalance(
+  balances: Map<string, number>,
+  programId: string,
+  programName: string,
+): number {
+  return (
+    balances.get(programId) ?? balances.get(normalizeProgram(programName)) ?? 0
+  );
+}
+
+function matchesDestinationProgram(
+  partner: TransferPartner,
+  airlineProgram: string,
+): boolean {
+  return (
+    partner.toProgramId === airlineProgram ||
+    normalizeProgram(partner.toProgram) === normalizeProgram(airlineProgram)
+  );
+}
+
 export function getTransferPathDisplays(
   airlineProgram: string,
   pointsNeeded: number,
@@ -27,22 +55,26 @@ export function getTransferPathDisplays(
       continue;
     }
 
-    const normalizedProgram = normalizeProgram(account.programName);
-    flexibleBalances.set(
-      normalizedProgram,
-      (flexibleBalances.get(normalizedProgram) ?? 0) + account.balance,
+    addBalance(flexibleBalances, account.programId, account.balance);
+    addBalance(
+      flexibleBalances,
+      normalizeProgram(account.programName),
+      account.balance,
     );
   }
 
   return transferPartners
     .filter(
       (partner) =>
-        partner.isActive &&
-        normalizeProgram(partner.toProgram) === normalizeProgram(airlineProgram),
+        partner.isActive && matchesDestinationProgram(partner, airlineProgram),
     )
     .flatMap((partner) => {
       const availableBalance =
-        flexibleBalances.get(normalizeProgram(partner.fromProgram)) ?? 0;
+        getBalance(
+          flexibleBalances,
+          partner.fromProgramId,
+          partner.fromProgram,
+        );
 
       if (availableBalance <= 0) {
         return [];

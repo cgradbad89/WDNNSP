@@ -451,25 +451,6 @@ function CheckIcon({ className }: { className?: string }) {
   );
 }
 
-function ArrowIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={className}
-      fill="none"
-      viewBox="0 0 20 20"
-    >
-      <path
-        d="M4 10h11m0 0-4-4m4 4-4 4"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
-}
-
 function FieldError({ children }: { children?: string }) {
   if (!children) {
     return null;
@@ -1013,13 +994,13 @@ function SidePanel({
           Next actions
         </p>
         <div className="mt-4 space-y-3">
-          <button
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-[#2f6b4f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#25573f]"
-            type="button"
-          >
-            Check airline directly
-            <ArrowIcon className="h-4 w-4" />
-          </button>
+          <div className="rounded-md bg-[#edf3ea] px-4 py-3 text-sm text-[#24382d]">
+            <p className="font-semibold">Verify with the airline directly</p>
+            <p className="mt-1 text-[#526158]">
+              WDNNSP does not link to booking yet. Confirm award space before
+              transferring points.
+            </p>
+          </div>
           <Link
             className="block rounded-md border border-[#b8c8b2] px-4 py-3 text-center text-sm font-semibold text-[#24382d] transition hover:bg-[#edf3ea]"
             href="/search"

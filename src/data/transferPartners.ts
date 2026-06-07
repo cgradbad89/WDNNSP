@@ -1,6 +1,34 @@
+import { POINTS_PROGRAMS } from "@/data/pointsPrograms";
 import type { TransferPartner } from "@/types/transferPartners";
 
-export const TRANSFER_PARTNERS: TransferPartner[] = [
+type TransferPartnerSeed = Omit<
+  TransferPartner,
+  "fromProgramId" | "toProgramId"
+>;
+
+const programIdsByName = new Map(
+  POINTS_PROGRAMS.map((program) => [program.name.toLowerCase(), program.id]),
+);
+
+function getProgramId(programName: string): string {
+  const programId = programIdsByName.get(programName.toLowerCase());
+
+  if (!programId) {
+    throw new Error(`Missing points program id for ${programName}`);
+  }
+
+  return programId;
+}
+
+function withProgramIds(partner: TransferPartnerSeed): TransferPartner {
+  return {
+    ...partner,
+    fromProgramId: getProgramId(partner.fromProgram),
+    toProgramId: getProgramId(partner.toProgram),
+  };
+}
+
+const TRANSFER_PARTNER_SEEDS: TransferPartnerSeed[] = [
   // Chase Ultimate Rewards
   {
     id: "chase-to-air-canada-aeroplan",
@@ -378,3 +406,6 @@ export const TRANSFER_PARTNERS: TransferPartner[] = [
   },
   // TODO: Verify whether Atmos Rewards should replace Alaska Mileage Plan in the app's initial airline program list.
 ];
+
+export const TRANSFER_PARTNERS: TransferPartner[] =
+  TRANSFER_PARTNER_SEEDS.map(withProgramIds);

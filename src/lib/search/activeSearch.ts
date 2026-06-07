@@ -1,4 +1,9 @@
-import type { SavedSearch } from "@/types/search";
+import type { ActiveSearch } from "@/types/search";
+import {
+  createPersistedEnvelope,
+  unwrapPersistedEnvelope,
+} from "@/lib/persistence/schema";
+import { isSavedSearch } from "@/lib/search/validators";
 
 const ACTIVE_SEARCH_STORAGE_KEY = "wdnnsp.activeSearch";
 
@@ -6,7 +11,14 @@ function hasBrowserStorage(): boolean {
   return typeof window !== "undefined" && Boolean(window.localStorage);
 }
 
-export function loadActiveSearch(): SavedSearch | undefined {
+function parseActiveSearch(value: unknown): ActiveSearch | undefined {
+  return (
+    unwrapPersistedEnvelope(value, isSavedSearch) ??
+    (isSavedSearch(value) ? value : undefined)
+  );
+}
+
+export function loadActiveSearch(): ActiveSearch | undefined {
   if (!hasBrowserStorage()) {
     return undefined;
   }
@@ -18,20 +30,22 @@ export function loadActiveSearch(): SavedSearch | undefined {
       return undefined;
     }
 
-    return JSON.parse(storedValue) as SavedSearch;
+    const parsedValue: unknown = JSON.parse(storedValue);
+
+    return parseActiveSearch(parsedValue);
   } catch {
     return undefined;
   }
 }
 
-export function saveActiveSearch(search: SavedSearch): void {
+export function saveActiveSearch(search: ActiveSearch): void {
   if (!hasBrowserStorage()) {
     return;
   }
 
   window.localStorage.setItem(
     ACTIVE_SEARCH_STORAGE_KEY,
-    JSON.stringify(search),
+    JSON.stringify(createPersistedEnvelope(search)),
   );
 }
 
