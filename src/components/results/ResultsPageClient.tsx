@@ -5,13 +5,13 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
 import { MOCK_POINTS_ACCOUNTS } from "@/data/mockPointsAccounts";
-import {
-  getMockAwardOptionsForSearch,
-  getMockCashOptionForSearch,
-} from "@/data/mockResults";
 import { TRANSFER_PARTNERS } from "@/data/transferPartners";
 import { CentsPerPointHelp } from "@/components/results/CentsPerPointHelp";
 import { expandAirportCode } from "@/lib/airports/groups";
+import {
+  getMockAwardFlightsForSearch,
+  getMockCashFlightsForSearch,
+} from "@/lib/providers/mock";
 import {
   applyResultsFilters,
   type ResultsFilters,
@@ -1358,12 +1358,13 @@ export function ResultsPageClient(): JSX.Element {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [routeModal, setRouteModal] = useState<RouteModalState>();
 
-  const cashOption = useMemo(
-    () => getMockCashOptionForSearch(selectedSearch),
+  const cashOptions = useMemo(
+    () => getMockCashFlightsForSearch(selectedSearch),
     [selectedSearch],
   );
+  const cashOption = cashOptions[0];
   const awardOptions = useMemo(
-    () => getMockAwardOptionsForSearch(selectedSearch),
+    () => getMockAwardFlightsForSearch(selectedSearch),
     [selectedSearch],
   );
   const recommendationResults = useMemo(

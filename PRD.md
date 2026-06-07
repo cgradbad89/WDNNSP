@@ -729,6 +729,7 @@ src/
   lib/
     firebase/
     airports/
+    providers/
     points/
     transferPartners/
     wallet/
@@ -839,9 +840,9 @@ Exit criteria:
 
 Current implementation status as of June 6, 2026:
 
-- Completed: deterministic mock cash benchmark generation for the real `/results` route, driven by the active search, first saved search, or a Tokyo Spring Trip fallback, with mock route detail data for cash benchmark cards.
-- Covered by unit tests: cash benchmark use in cents-per-point calculations through the scoring helpers, active-search selection priority, and route-detail duration/summary formatting.
-- Remaining: cash flight provider abstraction, multiple cash options, manual cash entry, Duffel/Amadeus-style live provider integration, and production freshness metadata.
+- Completed: cash flight provider interface, mock cash provider, deterministic mock cash benchmark generation for the real `/results` route, driven by the active search, first saved search, or a Tokyo Spring Trip fallback, with mock route detail data for cash benchmark cards.
+- Covered by unit tests: mock cash provider output, cash benchmark use in cents-per-point calculations through the scoring helpers, active-search selection priority, and route-detail duration/summary formatting.
+- Remaining: multiple cash options, manual cash entry, Duffel/Amadeus-style live provider integration, and production freshness metadata.
 
 ---
 
@@ -863,9 +864,9 @@ Exit criteria:
 
 Current implementation status as of June 6, 2026:
 
-- Completed: deterministic mock award options for the real `/results` route, including Tokyo-like Air Canada Aeroplan, Virgin Atlantic Flying Club, and United MileagePlus examples, generic route fallback options, route detail data, transfer-required display details, and mock result filters.
-- Covered by unit tests: award option scoring against wallet balances and transfer partners, transfer-path display derivation, and mock result filter behavior.
-- Remaining: award provider abstraction, manual award entry, real award availability providers, production freshness handling, and authenticated persistence.
+- Completed: award flight provider interface, mock award provider, deterministic mock award options for the real `/results` route, including Tokyo-like Air Canada Aeroplan, Virgin Atlantic Flying Club, and United MileagePlus examples, generic route fallback options, route detail data, transfer-required display details, and mock result filters.
+- Covered by unit tests: mock award provider output, award option scoring against wallet balances and transfer partners, transfer-path display derivation, and mock result filter behavior.
+- Remaining: manual award entry, real award availability providers, production freshness handling, and authenticated persistence.
 
 ---
 
