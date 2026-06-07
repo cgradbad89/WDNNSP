@@ -167,6 +167,34 @@ function createTwoSegmentRouteDetail({
   };
 }
 
+function createNonstopRouteDetail({
+  destination,
+  durationMinutes,
+  flightNumber,
+  origin,
+}: {
+  destination: string;
+  durationMinutes: number;
+  flightNumber: string;
+  origin: string;
+}): RouteDetail {
+  return {
+    segments: [
+      {
+        id: `${flightNumber}-${origin}-${destination}`,
+        flightNumber,
+        origin,
+        destination,
+        departureTime: "09:00",
+        arrivalTime: "17:00",
+        durationMinutes,
+      },
+    ],
+    layovers: [],
+    totalDurationMinutes: durationMinutes,
+  };
+}
+
 function createThreeSegmentRouteDetail({
   destination,
   firstLayoverAirport,
@@ -231,6 +259,67 @@ function createThreeSegmentRouteDetail({
   };
 }
 
+function getRouteStopCount(routeDetail: RouteDetail | undefined): number {
+  return routeDetail?.layovers.length ?? 0;
+}
+
+function normalizeCashRoute(option: CashFlightOption): CashFlightOption {
+  return {
+    ...option,
+    durationMinutes: option.routeDetail?.totalDurationMinutes ?? option.durationMinutes,
+    stops: getRouteStopCount(option.routeDetail),
+  };
+}
+
+function normalizeAwardRoute(option: AwardFlightOption): AwardFlightOption {
+  return {
+    ...option,
+    durationMinutes: option.routeDetail?.totalDurationMinutes ?? option.durationMinutes,
+    stops: getRouteStopCount(option.routeDetail),
+  };
+}
+
+function makeCashOptionNonstop(
+  option: CashFlightOption,
+): CashFlightOption {
+  return normalizeCashRoute({
+    ...option,
+    flightNumbers: [option.flightNumbers[0] ?? "MOCK100"],
+    routeDetail: createNonstopRouteDetail({
+      destination: option.destination,
+      durationMinutes: option.durationMinutes,
+      flightNumber: option.flightNumbers[0] ?? "MOCK100",
+      origin: option.origin,
+    }),
+  });
+}
+
+function makeAwardOptionNonstop(
+  option: AwardFlightOption,
+): AwardFlightOption {
+  return normalizeAwardRoute({
+    ...option,
+    routeDetail: createNonstopRouteDetail({
+      destination: option.destination,
+      durationMinutes:
+        option.durationMinutes ?? option.routeDetail?.totalDurationMinutes ?? 0,
+      flightNumber: `${option.id}-flight`,
+      origin: option.origin,
+    }),
+  });
+}
+
+function normalizeAwardOptionsForSearch(
+  search: SavedSearch,
+  options: AwardFlightOption[],
+): AwardFlightOption[] {
+  if (search.maxStops === 0) {
+    return options.map(makeAwardOptionNonstop);
+  }
+
+  return options.map(normalizeAwardRoute);
+}
+
 export function getMockCashOptionForSearch(
   search: SavedSearch,
 ): CashFlightOption {
@@ -240,7 +329,7 @@ export function getMockCashOptionForSearch(
     ? cabinCashPriceByPassenger[search.cabin]
     : genericCashPriceByPassenger[search.cabin];
 
-  return {
+  const cashOption: CashFlightOption = {
     id: `mock-cash-${getPrimaryOrigin(search)}-${getPrimaryDestination(search)}`,
     source: "mock",
     airline: isTokyoRoute ? "ANA / United benchmark" : "Mock cash benchmark",
@@ -275,6 +364,10 @@ export function getMockCashOptionForSearch(
           destination: getPrimaryDestination(search),
         }),
   };
+
+  return search.maxStops === 0
+    ? makeCashOptionNonstop(cashOption)
+    : normalizeCashRoute(cashOption);
 }
 
 export function getMockAwardOptionsForSearch(
@@ -287,7 +380,7 @@ export function getMockAwardOptionsForSearch(
   if (routeResemblesWashingtonToTokyo(search)) {
     const points = tokyoAwardPointsByPassenger[search.cabin];
 
-    return [
+    return normalizeAwardOptionsForSearch(search, [
       {
         id: `mock-aeroplan-${origin}-${destination}`,
         source: "mock",
@@ -370,12 +463,12 @@ export function getMockAwardOptionsForSearch(
         confidence: "high",
         lastCheckedAt: "Mock data",
       },
-    ];
+    ]);
   }
 
   const points = genericAwardPointsByPassenger[search.cabin];
 
-  return [
+  return normalizeAwardOptionsForSearch(search, [
     {
       id: `mock-aeroplan-${origin}-${destination}`,
       source: "mock",
@@ -460,5 +553,5 @@ export function getMockAwardOptionsForSearch(
       confidence: "high",
       lastCheckedAt: "Mock data",
     },
-  ];
+  ]);
 }

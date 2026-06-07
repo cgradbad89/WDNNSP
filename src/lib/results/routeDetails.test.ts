@@ -27,6 +27,22 @@ const routeDetail: RouteDetail = {
   totalDurationMinutes: 910,
 };
 
+const nonstopRouteDetail: RouteDetail = {
+  segments: [
+    {
+      id: "seg-nonstop",
+      flightNumber: "UA100",
+      origin: "IAD",
+      destination: "NRT",
+      departureTime: "09:00",
+      arrivalTime: "17:00",
+      durationMinutes: 815,
+    },
+  ],
+  layovers: [],
+  totalDurationMinutes: 815,
+};
+
 describe("route detail formatting", () => {
   it("formats hours and minutes", () => {
     expect(formatDuration(135)).toBe("2h 15m");
@@ -40,5 +56,9 @@ describe("route detail formatting", () => {
     expect(formatRouteSummary(routeDetail)).toBe(
       "IAD \u2192 YVR \u00b7 2h 15m layover \u2192 NRT",
     );
+  });
+
+  it("does not include layover text for nonstop route summaries", () => {
+    expect(formatRouteSummary(nonstopRouteDetail)).toBe("IAD \u2192 NRT");
   });
 });

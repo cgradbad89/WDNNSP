@@ -401,6 +401,12 @@ Each result card should include:
 - Explanation
 - Warnings
 
+Real `/results` should use contextual transfer caution near transfer-required
+details or verification guidance. It should not show the full prominent
+dashboard-style transfer warning banner. `/search` should not show transfer
+warnings. Design routes may show stronger warning examples when useful for
+review.
+
 Example card language:
 
 > Best Overall: Transfer Chase Ultimate Rewards points to Air Canada Aeroplan. This option has strong value, reasonable taxes, and you have enough transferable points. Confirm availability directly with Aeroplan before transferring.
@@ -635,7 +641,8 @@ The app should be:
    Explain why something is recommended.
 
 4. **Cautious about transfers**  
-   Repeatedly warn that points transfers may be irreversible.
+   Warn in context that points transfers may be irreversible and require
+   direct award-space verification.
 
 5. **Personalized**  
    Recommendations should account for the user’s actual balances.
@@ -989,7 +996,7 @@ Important UI components:
 - Award flight card
 - Recommendation badge
 - Cents-per-point badge
-- Warning banner
+- Warning/caution block
 - Saved search card
 
 ---

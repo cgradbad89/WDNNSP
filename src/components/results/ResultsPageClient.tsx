@@ -1,17 +1,18 @@
 "use client";
 
-import type { ChangeEvent, FormEvent, JSX } from "react";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import type { ChangeEvent, FormEvent, JSX, MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
 import { MOCK_POINTS_ACCOUNTS } from "@/data/mockPointsAccounts";
 import { TRANSFER_PARTNERS } from "@/data/transferPartners";
 import { CentsPerPointHelp } from "@/components/results/CentsPerPointHelp";
 import { expandAirportCode } from "@/lib/airports/groups";
+import { mockFlightSearchProviderSet } from "@/lib/providers/mock";
 import {
-  getMockAwardFlightsForSearch,
-  getMockCashFlightsForSearch,
-} from "@/lib/providers/mock";
+  searchFlightsWithProviders,
+  type FlightSearchResults,
+} from "@/lib/providers/search";
 import {
   applyResultsFilters,
   type ResultsFilters,
@@ -39,11 +40,12 @@ import {
   validateSavedSearchInput,
 } from "@/lib/search/validation";
 import {
+  hasStoredWalletAccounts,
   loadWalletAccounts,
   WALLET_ACCOUNTS_CHANGED_EVENT,
 } from "@/lib/wallet/storage";
 import type { AwardFlightOption } from "@/types/awards";
-import type { Cabin, RouteDetail } from "@/types/flights";
+import type { Cabin, CashFlightOption, RouteDetail } from "@/types/flights";
 import type { PointsAccount } from "@/types/points";
 import type { SavedSearch, TripType } from "@/types/search";
 
@@ -72,6 +74,8 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
   style: "currency",
 });
+const EMPTY_CASH_OPTIONS: CashFlightOption[] = [];
+const EMPTY_AWARD_OPTIONS: AwardFlightOption[] = [];
 
 const cabinLabels: Record<Cabin, string> = {
   business: "Business",
@@ -121,13 +125,21 @@ function createSeedAccounts(): PointsAccount[] {
 }
 
 function getWalletAccountsSnapshot(): PointsAccount[] {
-  const walletAccounts = loadWalletAccounts();
-
-  return walletAccounts.length > 0 ? walletAccounts : createSeedAccounts();
+  return hasStoredWalletAccounts()
+    ? loadWalletAccounts()
+    : createSeedAccounts();
 }
 
-function subscribeToHydration(): () => void {
-  return () => undefined;
+function subscribeToHydration(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+
+  const timeoutId = window.setTimeout(onStoreChange, 0);
+
+  return () => {
+    window.clearTimeout(timeoutId);
+  };
 }
 
 function getClientHydrationSnapshot(): boolean {
@@ -465,7 +477,7 @@ function SummaryStrip({
   saveStatus,
   search,
 }: {
-  onEdit: () => void;
+  onEdit: (event: MouseEvent<HTMLButtonElement>) => void;
   onSave: () => void;
   saveStatus: string;
   search: SavedSearch;
@@ -707,7 +719,7 @@ function AwardOptionCard({
   transferPaths,
 }: {
   directBalance: number;
-  onViewRoute: () => void;
+  onViewRoute: (trigger: HTMLElement) => void;
   option: ScoredAwardOption;
   transferPaths: TransferPathDisplay[];
 }) {
@@ -811,7 +823,7 @@ function AwardOptionCard({
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button
           className="w-fit rounded-md border border-[#b8c8b2] px-4 py-2.5 text-sm font-semibold text-[#24382d] transition hover:bg-[#edf3ea]"
-          onClick={onViewRoute}
+          onClick={(event) => onViewRoute(event.currentTarget)}
           type="button"
         >
           View route details
@@ -846,7 +858,7 @@ function CashOptionCard({
   onViewRoute,
   option,
 }: {
-  onViewRoute: () => void;
+  onViewRoute: (trigger: HTMLElement) => void;
   option: ScoredCashOption;
 }) {
   return (
@@ -911,7 +923,7 @@ function CashOptionCard({
 
       <button
         className="mt-4 w-fit rounded-md border border-[#b8c8b2] px-4 py-2.5 text-sm font-semibold text-[#24382d] transition hover:bg-white"
-        onClick={onViewRoute}
+        onClick={(event) => onViewRoute(event.currentTarget)}
         type="button"
       >
         View route details
@@ -1020,6 +1032,14 @@ function RouteDetailsModal({
   modal: RouteModalState | undefined;
   onClose: () => void;
 }) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (modal) {
+      closeButtonRef.current?.focus();
+    }
+  }, [modal]);
+
   if (!modal) {
     return null;
   }
@@ -1027,10 +1047,23 @@ function RouteDetailsModal({
   const routeDetail = modal.routeDetail;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#14211b]/45 p-4 sm:items-center">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#14211b]/45 p-4 sm:items-center"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <section
+        aria-labelledby="route-details-dialog-title"
         aria-modal="true"
         className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-5 shadow-[0_24px_70px_rgba(20,33,27,0.28)] md:p-6"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            onClose();
+          }
+        }}
         role="dialog"
       >
         <div className="flex items-start justify-between gap-4">
@@ -1038,13 +1071,18 @@ function RouteDetailsModal({
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
               Route details
             </p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[#14211b]">
+            <h3
+              className="mt-2 text-2xl font-semibold tracking-tight text-[#14211b]"
+              id="route-details-dialog-title"
+            >
               {modal.title}
             </h3>
           </div>
           <button
+            aria-label="Close route details"
             className="rounded-md border border-[#b8c8b2] px-3 py-2 text-sm font-semibold text-[#24382d] transition hover:bg-[#edf3ea]"
             onClick={onClose}
+            ref={closeButtonRef}
             type="button"
           >
             Close
@@ -1113,11 +1151,30 @@ function EditSearchModal({
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#14211b]/45 p-4 sm:items-center">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#14211b]/45 p-4 sm:items-center"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <form
+        aria-labelledby="edit-search-dialog-title"
         aria-modal="true"
         className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white p-5 shadow-[0_24px_70px_rgba(20,33,27,0.28)] md:p-6"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            onClose();
+          }
+        }}
         onSubmit={onSubmit}
         role="dialog"
       >
@@ -1126,13 +1183,18 @@ function EditSearchModal({
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
               Edit search
             </p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[#14211b]">
+            <h3
+              className="mt-2 text-2xl font-semibold tracking-tight text-[#14211b]"
+              id="edit-search-dialog-title"
+            >
               Update active search
             </h3>
           </div>
           <button
+            aria-label="Close edit search"
             className="rounded-md border border-[#b8c8b2] px-3 py-2 text-sm font-semibold text-[#24382d] transition hover:bg-[#edf3ea]"
             onClick={onClose}
+            ref={closeButtonRef}
             type="button"
           >
             Close
@@ -1357,16 +1419,52 @@ export function ResultsPageClient(): JSX.Element {
   const [editErrors, setEditErrors] = useState<SearchValidationErrors>({});
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [routeModal, setRouteModal] = useState<RouteModalState>();
+  const [flightSearchState, setFlightSearchState] = useState<{
+    results: FlightSearchResults;
+    searchId: string;
+  }>();
+  const [providerError, setProviderError] = useState<{
+    message: string;
+    searchId: string;
+  }>();
+  const modalTriggerRef = useRef<HTMLElement | null>(null);
 
-  const cashOptions = useMemo(
-    () => getMockCashFlightsForSearch(selectedSearch),
-    [selectedSearch],
-  );
+  useEffect(() => {
+    let isCurrent = true;
+
+    searchFlightsWithProviders(selectedSearch, mockFlightSearchProviderSet)
+      .then((results) => {
+        if (isCurrent) {
+          setProviderError(undefined);
+          setFlightSearchState({
+            results,
+            searchId: selectedSearch.id,
+          });
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setProviderError({
+            message: "Mock flight results could not be loaded.",
+            searchId: selectedSearch.id,
+          });
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedSearch]);
+
+  const flightSearchResults =
+    flightSearchState?.searchId === selectedSearch.id
+      ? flightSearchState.results
+      : undefined;
+  const currentProviderError =
+    providerError?.searchId === selectedSearch.id ? providerError.message : "";
+  const cashOptions = flightSearchResults?.cashOptions ?? EMPTY_CASH_OPTIONS;
   const cashOption = cashOptions[0];
-  const awardOptions = useMemo(
-    () => getMockAwardFlightsForSearch(selectedSearch),
-    [selectedSearch],
-  );
+  const awardOptions = flightSearchResults?.awardOptions ?? EMPTY_AWARD_OPTIONS;
   const recommendationResults = useMemo(
     () =>
       scoreAwardOptions(
@@ -1413,6 +1511,31 @@ export function ResultsPageClient(): JSX.Element {
       (option) => option.recommendationLabel === "best_overall",
     ) ?? filteredAwardOptions[0];
 
+  function saveModalTrigger(trigger?: HTMLElement | null): void {
+    if (trigger) {
+      modalTriggerRef.current = trigger;
+      return;
+    }
+
+    modalTriggerRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+  }
+
+  function restoreModalTriggerFocus(): void {
+    const trigger = modalTriggerRef.current;
+    modalTriggerRef.current = null;
+
+    if (!trigger) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      trigger.focus();
+    }, 0);
+  }
+
   function handleSaveSearch(): void {
     const nextSearch: SavedSearch = {
       ...selectedSearch,
@@ -1431,11 +1554,30 @@ export function ResultsPageClient(): JSX.Element {
     setSaveStatus(`Saved "${nextSearch.name}" locally.`);
   }
 
-  function handleOpenEdit(): void {
+  function handleOpenEdit(event: MouseEvent<HTMLButtonElement>): void {
+    saveModalTrigger(event.currentTarget);
     setEditFormState(createEditFormState(selectedSearch));
     setEditErrors({});
     setSaveStatus("");
     setIsEditOpen(true);
+  }
+
+  function handleCloseEdit(): void {
+    setIsEditOpen(false);
+    restoreModalTriggerFocus();
+  }
+
+  function handleOpenRouteDetails(
+    nextRouteModal: RouteModalState,
+    trigger: HTMLElement,
+  ): void {
+    saveModalTrigger(trigger);
+    setRouteModal(nextRouteModal);
+  }
+
+  function handleCloseRouteDetails(): void {
+    setRouteModal(undefined);
+    restoreModalTriggerFocus();
   }
 
   function updateEditField<Field extends keyof EditSearchFormState>(
@@ -1504,6 +1646,7 @@ export function ResultsPageClient(): JSX.Element {
     setEditFormState(createEditFormState(updatedSearch));
     setEditErrors({});
     setIsEditOpen(false);
+    restoreModalTriggerFocus();
     setSaveStatus("Active search updated.");
   }
 
@@ -1515,6 +1658,39 @@ export function ResultsPageClient(): JSX.Element {
       ...currentFilters,
       [filter]: value,
     }));
+  }
+
+  if (currentProviderError) {
+    return (
+      <div className="rounded-lg border border-[#ead99d] bg-[#fff9df] p-6">
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#5d4c1d]">
+          Results
+        </p>
+        <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[#14211b]">
+          Mock results could not load
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[#5d4c1d]">
+          {currentProviderError} Try running the search again.
+        </p>
+      </div>
+    );
+  }
+
+  if (!flightSearchResults) {
+    return (
+      <div className="rounded-lg border border-[#d9e2d6] bg-white p-6">
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
+          Results
+        </p>
+        <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[#14211b]">
+          Loading mock comparison
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[#637268]">
+          Cash and award providers are preparing results for{" "}
+          {selectedSearch.name}.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -1555,7 +1731,7 @@ export function ResultsPageClient(): JSX.Element {
                 Cash benchmark
               </p>
               <p className="mt-2 text-xl font-semibold text-[#14211b]">
-                {formatCurrency(cashOption.cashPriceUsd)}
+                {cashOption ? formatCurrency(cashOption.cashPriceUsd) : "None"}
               </p>
             </div>
           </div>
@@ -1573,7 +1749,7 @@ export function ResultsPageClient(): JSX.Element {
         <div className="space-y-6">
           <RecommendationPanel
             bestAwardOption={bestAwardOption}
-            cashBenchmark={cashOption.cashPriceUsd}
+            cashBenchmark={cashOption?.cashPriceUsd ?? 0}
           />
 
           <CashBenchmarkPanel
@@ -1605,11 +1781,14 @@ export function ResultsPageClient(): JSX.Element {
                     option.airlineProgram,
                   )}
                   key={option.id}
-                  onViewRoute={() =>
-                    setRouteModal({
-                      title: option.airlineProgram,
-                      routeDetail: option.routeDetail,
-                    })
+                  onViewRoute={(trigger) =>
+                    handleOpenRouteDetails(
+                      {
+                        title: option.airlineProgram,
+                        routeDetail: option.routeDetail,
+                      },
+                      trigger,
+                    )
                   }
                   option={option}
                   transferPaths={transferPathsByOptionId.get(option.id) ?? []}
@@ -1624,11 +1803,14 @@ export function ResultsPageClient(): JSX.Element {
 
             {recommendationResults.cashOption ? (
               <CashOptionCard
-                onViewRoute={() =>
-                  setRouteModal({
-                    title: "Cash Fare Benchmark",
-                    routeDetail: recommendationResults.cashOption?.routeDetail,
-                  })
+                onViewRoute={(trigger) =>
+                  handleOpenRouteDetails(
+                    {
+                      title: "Cash Fare Benchmark",
+                      routeDetail: recommendationResults.cashOption?.routeDetail,
+                    },
+                    trigger,
+                  )
                 }
                 option={recommendationResults.cashOption}
               />
@@ -1644,14 +1826,14 @@ export function ResultsPageClient(): JSX.Element {
           errors={editErrors}
           formState={editFormState}
           onChangeField={updateEditField}
-          onClose={() => setIsEditOpen(false)}
+          onClose={handleCloseEdit}
           onSubmit={handleEditSubmit}
         />
       ) : null}
 
       <RouteDetailsModal
         modal={routeModal}
-        onClose={() => setRouteModal(undefined)}
+        onClose={handleCloseRouteDetails}
       />
     </div>
   );

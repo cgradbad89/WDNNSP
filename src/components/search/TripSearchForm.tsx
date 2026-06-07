@@ -25,6 +25,7 @@ import {
   validateSavedSearchInput,
 } from "@/lib/search/validation";
 import {
+  hasStoredWalletAccounts,
   loadWalletAccounts,
   WALLET_ACCOUNTS_CHANGED_EVENT,
 } from "@/lib/wallet/storage";
@@ -76,9 +77,9 @@ function createSeedAccounts(): PointsAccount[] {
 }
 
 function getWalletAccountsSnapshot(): PointsAccount[] {
-  const storedAccounts = loadWalletAccounts();
-
-  return storedAccounts.length > 0 ? storedAccounts : createSeedAccounts();
+  return hasStoredWalletAccounts()
+    ? loadWalletAccounts()
+    : createSeedAccounts();
 }
 
 function subscribeToWalletAccounts(onStoreChange: () => void): () => void {
@@ -119,8 +120,16 @@ function parseWalletAccountsSnapshot(snapshot: string): PointsAccount[] {
   return createSeedAccounts();
 }
 
-function subscribeToHydration(): () => void {
-  return () => undefined;
+function subscribeToHydration(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+
+  const timeoutId = window.setTimeout(onStoreChange, 0);
+
+  return () => {
+    window.clearTimeout(timeoutId);
+  };
 }
 
 function getClientHydrationSnapshot(): boolean {

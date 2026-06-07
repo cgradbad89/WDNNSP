@@ -40,8 +40,16 @@ function getWalletAccountsSnapshot(): PointsAccount[] {
     : createSeedAccounts();
 }
 
-function subscribeToHydration(): () => void {
-  return () => undefined;
+function subscribeToHydration(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+
+  const timeoutId = window.setTimeout(onStoreChange, 0);
+
+  return () => {
+    window.clearTimeout(timeoutId);
+  };
 }
 
 function getClientSnapshot(): boolean {

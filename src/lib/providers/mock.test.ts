@@ -29,6 +29,12 @@ const search: SavedSearch = {
   updatedAt: "2026-06-06T00:00:00.000Z",
 };
 
+const nonstopSearch: SavedSearch = {
+  ...search,
+  id: "search-nonstop",
+  maxStops: 0,
+};
+
 describe("mock flight providers", () => {
   it("exposes a cash and award provider set", () => {
     expect(mockFlightSearchProviderSet.cashProvider.id).toBe("mock-cash");
@@ -48,5 +54,40 @@ describe("mock flight providers", () => {
 
     expect(awardOptions).toEqual(getMockAwardOptionsForSearch(search));
     expect(getMockAwardFlightsForSearch(search)).toEqual(awardOptions);
+  });
+
+  it("keeps nonstop mock cash route details free of layovers", async () => {
+    const [cashOption] =
+      await mockCashFlightProvider.searchCashFlights(nonstopSearch);
+
+    expect(cashOption.stops).toBe(0);
+    expect(cashOption.routeDetail?.layovers).toEqual([]);
+    expect(cashOption.routeDetail?.segments).toHaveLength(1);
+  });
+
+  it("keeps nonstop mock award route details free of layovers", async () => {
+    const awardOptions =
+      await mockAwardFlightProvider.searchAwardFlights(nonstopSearch);
+
+    expect(awardOptions).not.toHaveLength(0);
+    expect(
+      awardOptions.every(
+        (option) =>
+          option.stops === 0 &&
+          option.routeDetail?.layovers.length === 0 &&
+          option.routeDetail?.segments.length === 1,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps one-stop mock route details aligned with stop counts", async () => {
+    const awardOptions = await mockAwardFlightProvider.searchAwardFlights(search);
+
+    expect(
+      awardOptions.every(
+        (option) => option.routeDetail?.layovers.length === option.stops,
+      ),
+    ).toBe(true);
+    expect(awardOptions.some((option) => option.stops === 1)).toBe(true);
   });
 });

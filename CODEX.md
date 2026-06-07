@@ -126,7 +126,7 @@ Deferred:         [anything not completed, or "none"]
 | Booking | Out of scope |
 | Account syncing | Out of scope |
 | Airline scraping | Out of scope |
-| Point transfer warning | Required wherever transfer recommendations appear |
+| Point transfer caution | Required wherever transfer recommendations appear; real `/results` uses contextual caution instead of a full prominent banner |
 | API keys/secrets | Never commit |
 | Firestore rules | Do not modify without explicit task instruction |
 
@@ -214,13 +214,15 @@ services/
 
 ## Required Warning Behavior
 
-Any result involving point transfers must include this warning or equivalent:
+Transfer caution must remain visible wherever transfer decisions are discussed.
+
+The dashboard should keep the full transfer warning:
 
 > Confirm award availability directly with the airline before transferring points. Transfers are often irreversible, and award space can disappear.
 
-Do not remove this warning.
+Real `/results` should not show that full warning as a prominent standalone banner. Instead, it should show contextual caution near transfer-required details, result cards, or verification guidance. `/search` should not show transfer warnings. Design routes may show stronger warning examples when useful for review.
 
-Do not bury this warning in a tooltip. It should be visible on dashboards, result cards, and recommendation views where transfers are discussed.
+Do not imply transfers are safe without verification. Do not bury transfer caution in a tooltip.
 
 ## Data Rules
 
@@ -308,7 +310,7 @@ Prioritize:
 - Useful empty states
 - Plain-language explanations
 - Obvious next actions
-- Visible transfer warnings
+- Visible transfer cautions near transfer decisions
 - Confidence/freshness labels for award data
 
 Do not add dense travel-hacking jargon without explanation.
