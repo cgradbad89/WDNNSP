@@ -5,6 +5,13 @@ export const metadata: Metadata = {
   title: "Search Design Prototype | WDNNSP",
 };
 
+type AirportSuggestion = {
+  code: string;
+  name: string;
+  detail: string;
+  kind: "airport" | "group";
+};
+
 const walletReadiness = [
   {
     label: "Flexible points",
@@ -18,13 +25,83 @@ const walletReadiness = [
   },
 ];
 
-const searchDetails = [
-  { label: "Trip name", value: "Tokyo Spring Trip" },
-  { label: "From", value: "WAS" },
-  { label: "To", value: "TYO" },
-  { label: "Dates", value: "May 1-10" },
-  { label: "Cabin", value: "Business" },
-  { label: "Passengers", value: "2" },
+const airportSuggestions: AirportSuggestion[] = [
+  {
+    code: "WAS",
+    name: "Washington, DC Area",
+    detail: "DCA · IAD · BWI",
+    kind: "group",
+  },
+  {
+    code: "IAD",
+    name: "Washington Dulles International",
+    detail: "Washington, DC Area",
+    kind: "airport",
+  },
+  {
+    code: "DCA",
+    name: "Reagan National",
+    detail: "Washington, DC Area",
+    kind: "airport",
+  },
+  {
+    code: "TYO",
+    name: "Tokyo Area",
+    detail: "HND · NRT",
+    kind: "group",
+  },
+  {
+    code: "HND",
+    name: "Tokyo Haneda",
+    detail: "Tokyo, Japan",
+    kind: "airport",
+  },
+  {
+    code: "NRT",
+    name: "Tokyo Narita",
+    detail: "Tokyo, Japan",
+    kind: "airport",
+  },
+];
+
+const validationExamples = [
+  {
+    label: "Valid selected airport group",
+    route: "WAS",
+    message: "WAS expands to DCA, IAD, and BWI.",
+    tone: "success",
+  },
+  {
+    label: "Valid selected airport",
+    route: "HND",
+    message: "Tokyo Haneda searches only HND.",
+    tone: "success",
+  },
+  {
+    label: "Unsupported airport/code",
+    route: "ZZZ",
+    message: "Choose a supported airport or metro area.",
+    tone: "error",
+  },
+  {
+    label: "Same origin and destination",
+    route: "WAS to WAS",
+    message: "Origin and destination cannot be the same.",
+    tone: "error",
+  },
+];
+
+const savedSearchExamples = [
+  {
+    name: "Tokyo Spring Trip",
+    route: "WAS to TYO",
+    details: "Business · 2 passengers · +/- 3 days",
+  },
+  {
+    name: "London Summer",
+    route: "IAD to LON",
+    details: "Economy · 2 passengers · Nonstop preferred",
+  },
 ];
 
 function SearchIcon({ className }: { className?: string }) {
@@ -62,6 +139,164 @@ function ArrowIcon({ className }: { className?: string }) {
         strokeWidth="1.8"
       />
     </svg>
+  );
+}
+
+function FieldStatus({ children }: { children: string }) {
+  return (
+    <p className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#2f6b4f]">
+      {children}
+    </p>
+  );
+}
+
+function SuggestionBadge({ kind }: { kind: AirportSuggestion["kind"] }) {
+  const badgeClassName =
+    kind === "group"
+      ? "border-[#b8d2c1] bg-[#edf7ef] text-[#2f6b4f]"
+      : "border-[#d8dfd4] bg-white text-[#526158]";
+
+  return (
+    <span
+      className={`rounded-full border px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] ${badgeClassName}`}
+    >
+      {kind === "group" ? "Airport group" : "Airport"}
+    </span>
+  );
+}
+
+function AirportSuggestionRow({
+  suggestion,
+}: {
+  suggestion: AirportSuggestion;
+}) {
+  const rowClassName =
+    suggestion.kind === "group"
+      ? "border-[#b8d2c1] bg-[#f3faf4]"
+      : "border-[#edf3ea] bg-white";
+
+  return (
+    <li
+      aria-selected={suggestion.code === "WAS"}
+      className={`rounded-md border p-3 ${rowClassName}`}
+      role="option"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="text-lg font-semibold tracking-tight text-[#14211b]">
+              {suggestion.code}
+            </span>
+            <span className="text-sm font-semibold text-[#24382d]">
+              {suggestion.name}
+            </span>
+          </div>
+          <p className="mt-1 text-sm leading-6 text-[#637268]">
+            {suggestion.detail}
+          </p>
+        </div>
+        <SuggestionBadge kind={suggestion.kind} />
+      </div>
+    </li>
+  );
+}
+
+function AirportSuggestionDropdown({ id }: { id: string }) {
+  return (
+    <div
+      id={id}
+      className="mt-2 rounded-md border border-[#b8c8b2] bg-white p-2 shadow-[0_16px_34px_rgba(31,63,45,0.14)]"
+      role="listbox"
+    >
+      <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#637268]">
+          Supported matches
+        </p>
+        <p className="text-xs font-semibold text-[#2f6b4f]">6 shown</p>
+      </div>
+      <ul className="grid gap-2">
+        {airportSuggestions.map((suggestion) => (
+          <AirportSuggestionRow
+            key={`${suggestion.kind}-${suggestion.code}`}
+            suggestion={suggestion}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function AirportAutocompleteField({
+  defaultValue,
+  helper,
+  id,
+  isActive = false,
+  label,
+  status,
+}: {
+  defaultValue: string;
+  helper: string;
+  id: string;
+  isActive?: boolean;
+  label: string;
+  status: string;
+}) {
+  const suggestionListId = `${id}-suggestions`;
+
+  return (
+    <label className="block">
+      <span className="text-sm font-semibold text-[#24382d]">{label}</span>
+      <input
+        aria-autocomplete="list"
+        aria-controls={isActive ? suggestionListId : undefined}
+        aria-expanded={isActive}
+        aria-haspopup="listbox"
+        className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-base font-semibold uppercase text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
+        defaultValue={defaultValue}
+        id={id}
+        role="combobox"
+        type="text"
+      />
+      <FieldStatus>{status}</FieldStatus>
+      <p className="mt-1 text-sm leading-6 text-[#637268]">{helper}</p>
+      {isActive ? <AirportSuggestionDropdown id={suggestionListId} /> : null}
+    </label>
+  );
+}
+
+function ValidationExample({
+  example,
+}: {
+  example: (typeof validationExamples)[number];
+}) {
+  const isError = example.tone === "error";
+
+  return (
+    <article
+      className={`rounded-md border p-4 ${
+        isError
+          ? "border-[#e2b6ac] bg-[#fff8f6]"
+          : "border-[#b8d2c1] bg-[#f3faf4]"
+      }`}
+    >
+      <p
+        className={`text-xs font-semibold uppercase tracking-[0.12em] ${
+          isError ? "text-[#9b3c2f]" : "text-[#2f6b4f]"
+        }`}
+      >
+        {example.label}
+      </p>
+      <p className="mt-2 text-lg font-semibold tracking-tight text-[#14211b]">
+        {example.route}
+      </p>
+      <p
+        className={`mt-2 text-sm font-semibold leading-6 ${
+          isError ? "text-[#8f2d2d]" : "text-[#2f6b4f]"
+        }`}
+      >
+        {example.message}
+      </p>
+    </article>
   );
 }
 
@@ -130,25 +365,48 @@ export default function SearchDesignPage() {
           </label>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-sm font-semibold text-[#24382d]">
-                From
-              </span>
-              <input
-                className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-base font-semibold uppercase text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-                defaultValue="WAS"
-                type="text"
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold text-[#24382d]">To</span>
-              <input
-                className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-base font-semibold uppercase text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-                defaultValue="TYO"
-                type="text"
-              />
-            </label>
+            <AirportAutocompleteField
+              defaultValue="WAS"
+              helper="Airport groups search every listed airport. Choose an individual airport when the trip should stay airport-specific."
+              id="design-origin-airport"
+              isActive
+              label="From"
+              status="Selected group"
+            />
+            <AirportAutocompleteField
+              defaultValue="HND"
+              helper="Individual airports search only that airport and still show the related metro area for context."
+              id="design-destination-airport"
+              label="To"
+              status="Selected airport"
+            />
           </div>
+
+          <section
+            aria-label="Airport validation examples"
+            className="mt-5 rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[#2f6b4f]">
+                  Validation states
+                </p>
+                <p className="mt-1 text-sm leading-6 text-[#637268]">
+                  The real form should accept supported airport groups and
+                  individual airports, then block unsupported or duplicate
+                  routes.
+                </p>
+              </div>
+              <span className="w-fit rounded-md bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#526158]">
+                Design only
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {validationExamples.map((example) => (
+                <ValidationExample example={example} key={example.label} />
+              ))}
+            </div>
+          </section>
 
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             <label className="block">
@@ -260,20 +518,27 @@ export default function SearchDesignPage() {
         <aside className="space-y-4">
           <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 md:p-6">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
-              Current search
+              Airport selection rules
             </p>
-            <div className="mt-4 grid gap-3">
-              {searchDetails.map((detail) => (
-                <div
-                  className="flex items-center justify-between gap-4 border-b border-[#edf3ea] pb-3 last:border-b-0 last:pb-0"
-                  key={detail.label}
-                >
-                  <span className="text-sm text-[#637268]">{detail.label}</span>
-                  <span className="text-sm font-semibold text-[#14211b]">
-                    {detail.value}
-                  </span>
-                </div>
-              ))}
+            <div className="mt-4 space-y-3">
+              <article className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4">
+                <SuggestionBadge kind="group" />
+                <p className="mt-3 text-sm font-semibold text-[#24382d]">
+                  Use groups for flexible metro searches.
+                </p>
+                <p className="mt-1 text-sm leading-6 text-[#637268]">
+                  WAS expands to DCA, IAD, and BWI.
+                </p>
+              </article>
+              <article className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4">
+                <SuggestionBadge kind="airport" />
+                <p className="mt-3 text-sm font-semibold text-[#24382d]">
+                  Use airports for specific terminals.
+                </p>
+                <p className="mt-1 text-sm leading-6 text-[#637268]">
+                  HND searches Tokyo Haneda only.
+                </p>
+              </article>
             </div>
           </section>
 
@@ -287,6 +552,41 @@ export default function SearchDesignPage() {
             </p>
           </section>
         </aside>
+      </section>
+
+      <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 md:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
+              Saved searches
+            </p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[#14211b]">
+              Run a previous trip search
+            </h3>
+          </div>
+          <p className="text-sm text-[#637268]">
+            Saved searches stay below the new search form.
+          </p>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {savedSearchExamples.map((search) => (
+            <article
+              className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
+              key={search.name}
+            >
+              <p className="text-sm font-semibold text-[#24382d]">
+                {search.name}
+              </p>
+              <p className="mt-2 text-lg font-semibold tracking-tight text-[#14211b]">
+                {search.route}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[#637268]">
+                {search.details}
+              </p>
+            </article>
+          ))}
+        </div>
       </section>
     </div>
   );
