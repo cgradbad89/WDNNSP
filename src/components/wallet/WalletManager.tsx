@@ -1,7 +1,13 @@
 "use client";
 
 import type { ChangeEvent, FormEvent, JSX } from "react";
-import { useReducer, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { MOCK_POINTS_ACCOUNTS } from "@/data/mockPointsAccounts";
 import { POINTS_PROGRAMS } from "@/data/pointsPrograms";
 import {
@@ -19,7 +25,13 @@ type AccountDraft = {
   notes: string;
 };
 
+type SaveFeedback = {
+  kind: "success" | "error";
+  message: string;
+} | null;
+
 const LOCAL_USER_ID = "local-user";
+const SAVE_FEEDBACK_TIMEOUT_MS = 3000;
 const numberFormatter = new Intl.NumberFormat("en-US");
 const programTypeLabels = {
   airline: "Airline miles",
@@ -119,11 +131,46 @@ export function WalletManager(): JSX.Element {
   const [newNotes, setNewNotes] = useState("");
   const [addError, setAddError] = useState("");
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const [saveFeedback, setSaveFeedback] = useState<SaveFeedback>(null);
+  const saveFeedbackTimeoutRef = useRef<number | null>(null);
 
-  function persistAccounts(nextAccounts: PointsAccount[]): void {
-    setAccountDrafts(createAccountDrafts(nextAccounts));
-    saveWalletAccounts(nextAccounts);
-    refreshWalletSnapshot();
+  useEffect(() => {
+    return () => {
+      if (saveFeedbackTimeoutRef.current !== null) {
+        window.clearTimeout(saveFeedbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function showSaveFeedback(feedback: Exclude<SaveFeedback, null>): void {
+    if (saveFeedbackTimeoutRef.current !== null) {
+      window.clearTimeout(saveFeedbackTimeoutRef.current);
+    }
+
+    setSaveFeedback(feedback);
+    saveFeedbackTimeoutRef.current = window.setTimeout(() => {
+      setSaveFeedback(null);
+      saveFeedbackTimeoutRef.current = null;
+    }, SAVE_FEEDBACK_TIMEOUT_MS);
+  }
+
+  function persistAccounts(nextAccounts: PointsAccount[]): boolean {
+    try {
+      saveWalletAccounts(nextAccounts);
+      setAccountDrafts(createAccountDrafts(nextAccounts));
+      refreshWalletSnapshot();
+      showSaveFeedback({
+        kind: "success",
+        message: "Wallet changes saved.",
+      });
+      return true;
+    } catch {
+      showSaveFeedback({
+        kind: "error",
+        message: "Wallet changes could not be saved.",
+      });
+      return false;
+    }
   }
 
   function handleProgramChange(event: ChangeEvent<HTMLSelectElement>): void {
@@ -158,7 +205,12 @@ export function WalletManager(): JSX.Element {
       notes: newNotes.trim() === "" ? undefined : newNotes.trim(),
     });
 
-    persistAccounts([...accounts, nextAccount]);
+    const didSave = persistAccounts([...accounts, nextAccount]);
+
+    if (!didSave) {
+      return;
+    }
+
     setNewBalance("");
     setNewNotes("");
     setAddError("");
@@ -208,7 +260,12 @@ export function WalletManager(): JSX.Element {
       notes: draft.notes.trim() === "" ? undefined : draft.notes.trim(),
     });
 
-    persistAccounts(nextAccounts);
+    const didSave = persistAccounts(nextAccounts);
+
+    if (!didSave) {
+      return;
+    }
+
     setEditErrors((currentErrors) => ({
       ...currentErrors,
       [account.id]: "",
@@ -218,7 +275,12 @@ export function WalletManager(): JSX.Element {
   function handleDeleteAccount(accountId: string): void {
     const nextAccounts = deleteWalletAccount(accounts, accountId);
 
-    persistAccounts(nextAccounts);
+    const didSave = persistAccounts(nextAccounts);
+
+    if (!didSave) {
+      return;
+    }
+
     setEditErrors((currentErrors) => {
       const remainingErrors = { ...currentErrors };
       delete remainingErrors[accountId];
@@ -228,6 +290,22 @@ export function WalletManager(): JSX.Element {
 
   return (
     <div className="space-y-6">
+      {saveFeedback ? (
+        <div className="pointer-events-none sticky top-4 z-20 flex justify-end">
+          <p
+            aria-live={saveFeedback.kind === "success" ? "polite" : undefined}
+            className={`rounded-md border px-4 py-3 text-sm font-semibold shadow-sm ${
+              saveFeedback.kind === "success"
+                ? "border-[#b8c8b2] bg-[#eef6ec] text-[#25573f]"
+                : "border-[#e0b4b4] bg-[#fff4f4] text-[#8f2d2d]"
+            }`}
+            role={saveFeedback.kind === "success" ? "status" : "alert"}
+          >
+            {saveFeedback.message}
+          </p>
+        </div>
+      ) : null}
+
       <section className="rounded-lg border border-[#d9e2d6] bg-white p-6">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
           Wallet
