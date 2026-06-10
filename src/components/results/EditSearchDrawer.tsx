@@ -2,7 +2,7 @@
 
 import type { ChangeEvent, FormEvent, JSX } from "react";
 import { useEffect, useRef } from "react";
-import { AIRPORT_GROUPS } from "@/data/airportGroups";
+import { AirportAutocomplete } from "@/components/search/AirportAutocomplete";
 import type { SearchValidationErrors } from "@/lib/search/validation";
 import type { Cabin } from "@/types/flights";
 import type { TripType } from "@/types/search";
@@ -110,41 +110,26 @@ export function EditSearchDrawer({
         </label>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-sm font-semibold text-[#24382d]">
-              Origin
-            </span>
-            <input
-              className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-base font-semibold uppercase text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-              list="edit-airport-group-options"
-              onChange={(event) => onChangeField("origin", event.target.value)}
-              type="text"
-              value={formState.origin}
-            />
-            <FieldError>{errors.originCodes}</FieldError>
-          </label>
-          <label className="block">
-            <span className="text-sm font-semibold text-[#24382d]">
-              Destination
-            </span>
-            <input
-              className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-base font-semibold uppercase text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-              list="edit-airport-group-options"
-              onChange={(event) =>
-                onChangeField("destination", event.target.value)
-              }
-              type="text"
-              value={formState.destination}
-            />
-            <FieldError>{errors.destinationCodes}</FieldError>
-          </label>
-          <datalist id="edit-airport-group-options">
-            {AIRPORT_GROUPS.map((group) => (
-              <option key={group.code} value={group.code}>
-                {group.name}
-              </option>
-            ))}
-          </datalist>
+          <AirportAutocomplete
+            error={errors.originCodes}
+            hint="Choose an airport or supported metro area."
+            id="edit-origin"
+            label="Origin"
+            onChange={(value) => onChangeField("origin", value)}
+            onSelect={() => undefined}
+            placeholder="WAS, IAD, Tokyo"
+            value={formState.origin}
+          />
+          <AirportAutocomplete
+            error={errors.destinationCodes}
+            hint="Airport groups search every listed airport."
+            id="edit-destination"
+            label="Destination"
+            onChange={(value) => onChangeField("destination", value)}
+            onSelect={() => undefined}
+            placeholder="TYO, HND, London"
+            value={formState.destination}
+          />
         </div>
 
         <div className="mt-4 grid gap-4 md:grid-cols-3">

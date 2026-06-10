@@ -91,6 +91,11 @@ export function AirportAutocomplete({
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
     if (event.key === "Escape") {
+      if (isOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+
       setIsOpen(false);
       return;
     }
