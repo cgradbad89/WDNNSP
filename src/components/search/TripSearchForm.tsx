@@ -1,11 +1,16 @@
 "use client";
 
-import type { ChangeEvent, FormEvent, JSX } from "react";
+import type { FormEvent, JSX } from "react";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
-import { AirportAutocomplete } from "@/components/search/AirportAutocomplete";
 import { MOCK_POINTS_ACCOUNTS } from "@/data/mockPointsAccounts";
+import { SavedSearchesList } from "@/components/search/SavedSearchesList";
+import { SearchCabinField } from "@/components/search/SearchCabinField";
+import { SearchDateFields } from "@/components/search/SearchDateFields";
+import { SearchRouteFields } from "@/components/search/SearchRouteFields";
+import { SearchSubmitActions } from "@/components/search/SearchSubmitActions";
+import { SearchTravelersFields } from "@/components/search/SearchTravelersFields";
 import { expandAirportCode } from "@/lib/airports/groups";
 import {
   getAirlineMileageAccounts,
@@ -63,13 +68,6 @@ const initialFormState: SearchFormState = {
 };
 
 const numberFormatter = new Intl.NumberFormat("en-US");
-
-const cabinLabels: Record<Cabin, string> = {
-  business: "Business",
-  economy: "Economy",
-  first: "First",
-  premium_economy: "Premium economy",
-};
 
 function createSeedAccounts(): PointsAccount[] {
   return MOCK_POINTS_ACCOUNTS.map((account) => ({
@@ -168,69 +166,11 @@ function parseRequiredNumber(value: string): number {
   return Number(value);
 }
 
-function formatCodes(codes: string[]): string {
-  return codes.length > 0 ? codes.join("/") : "Not set";
-}
-
-function formatDate(date: string | undefined): string {
-  if (!date) {
-    return "No date";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(`${date}T00:00:00`));
-}
-
 function formatNumber(value: number): string {
   return numberFormatter.format(value);
 }
 
-function formatTripType(tripType: TripType): string {
-  return tripType === "round_trip" ? "Round trip" : "One way";
-}
-
-function SearchIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={className}
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
-      <path
-        d="m16 16 4 4"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
-}
-
-function ArrowIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={className}
-      fill="none"
-      viewBox="0 0 20 20"
-    >
-      <path
-        d="M4 10h11m0 0-4-4m4 4-4 4"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
-}
-
-function FieldError({ children }: { children?: string }) {
+function FieldError({ children }: { children?: string }): JSX.Element | null {
   if (!children) {
     return null;
   }
@@ -303,6 +243,14 @@ export function TripSearchForm(): JSX.Element {
 
     return isLoaded ? loadSavedSearches() : [];
   }, [isLoaded, savedSearchVersion]);
+  const savedSearchItems = useMemo(
+    () =>
+      savedSearches.map((search) => ({
+        search,
+        supportStatus: getSavedSearchSupportStatus(search),
+      })),
+    [savedSearches],
+  );
 
   function updateField<Field extends keyof SearchFormState>(
     field: Field,
@@ -316,8 +264,7 @@ export function TripSearchForm(): JSX.Element {
     setStatusMessage("");
   }
 
-  function handleTripTypeChange(event: ChangeEvent<HTMLSelectElement>): void {
-    const nextTripType = event.target.value as TripType;
+  function handleTripTypeChange(nextTripType: TripType): void {
     updateField("tripType", nextTripType);
 
     if (nextTripType === "one_way") {
@@ -398,6 +345,12 @@ export function TripSearchForm(): JSX.Element {
     setStatusMessage("Saved search deleted.");
   }
 
+  function handleResetDefaults(): void {
+    setFormState(initialFormState);
+    setErrors({});
+    setStatusMessage("");
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 shadow-[0_18px_50px_rgba(31,63,45,0.08)] md:p-6">
@@ -476,176 +429,51 @@ export function TripSearchForm(): JSX.Element {
             <FieldError>{errors.name}</FieldError>
           </label>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <AirportAutocomplete
-              error={errors.originCodes}
-              hint="Choose an airport or supported metro area."
-              id="origin"
-              label="From"
-              onChange={(value) => updateField("origin", value)}
-              onSelect={() => undefined}
-              placeholder="WAS, IAD, Tokyo"
-              value={formState.origin}
-            />
-            <AirportAutocomplete
-              error={errors.destinationCodes}
-              hint="Airport groups search every listed airport."
-              id="destination"
-              label="To"
-              onChange={(value) => updateField("destination", value)}
-              onSelect={() => undefined}
-              placeholder="TYO, HND, London"
-              value={formState.destination}
-            />
-          </div>
+          <SearchRouteFields
+            destination={formState.destination}
+            destinationError={errors.destinationCodes}
+            onChangeDestination={(value) => updateField("destination", value)}
+            onChangeOrigin={(value) => updateField("origin", value)}
+            origin={formState.origin}
+            originError={errors.originCodes}
+          />
 
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <label className="block">
-              <span className="text-sm font-semibold text-[#24382d]">
-                Trip type
-              </span>
-              <select
-                className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-sm font-semibold text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-                onChange={handleTripTypeChange}
-                value={formState.tripType}
-              >
-                <option value="round_trip">Round trip</option>
-                <option value="one_way">One way</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold text-[#24382d]">
-                Depart
-              </span>
-              <input
-                className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-sm font-semibold text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-                onChange={(event) =>
-                  updateField("departDate", event.target.value)
-                }
-                type="date"
-                value={formState.departDate}
-              />
-              <FieldError>{errors.departDate}</FieldError>
-            </label>
-            {formState.tripType === "round_trip" ? (
-              <label className="block">
-                <span className="text-sm font-semibold text-[#24382d]">
-                  Return
-                </span>
-                <input
-                  className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-sm font-semibold text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:ring-4 focus:ring-[#2f6b4f]/10"
-                  onChange={(event) =>
-                    updateField("returnDate", event.target.value)
-                  }
-                  type="date"
-                  value={formState.returnDate}
-                />
-                <FieldError>{errors.returnDate}</FieldError>
-              </label>
-            ) : null}
-          </div>
+          <SearchDateFields
+            departDate={formState.departDate}
+            departDateError={errors.departDate}
+            onChangeDepartDate={(value) => updateField("departDate", value)}
+            onChangeReturnDate={(value) => updateField("returnDate", value)}
+            onChangeTripType={handleTripTypeChange}
+            returnDate={formState.returnDate}
+            returnDateError={errors.returnDate}
+            tripType={formState.tripType}
+          />
 
           <div className="mt-4 grid gap-4 md:grid-cols-4">
-            <label className="block">
-              <span className="text-sm font-semibold text-[#24382d]">
-                Cabin
-              </span>
-              <select
-                className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-sm font-semibold text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-                onChange={(event) =>
-                  updateField("cabin", event.target.value as Cabin)
-                }
-                value={formState.cabin}
-              >
-                <option value="economy">Economy</option>
-                <option value="premium_economy">Premium economy</option>
-                <option value="business">Business</option>
-                <option value="first">First</option>
-              </select>
-              <FieldError>{errors.cabin}</FieldError>
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold text-[#24382d]">
-                Passengers
-              </span>
-              <input
-                className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-sm font-semibold text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-                min="1"
-                onChange={(event) =>
-                  updateField("passengers", event.target.value)
-                }
-                type="number"
-                value={formState.passengers}
-              />
-              <FieldError>{errors.passengers}</FieldError>
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold text-[#24382d]">
-                Max stops
-              </span>
-              <input
-                className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-sm font-semibold text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-                min="0"
-                onChange={(event) =>
-                  updateField("maxStops", event.target.value)
-                }
-                type="number"
-                value={formState.maxStops}
-              />
-              <FieldError>{errors.maxStops}</FieldError>
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold text-[#24382d]">
-                Flexibility
-              </span>
-              <div className="mt-2 flex items-center gap-2 rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-3 py-2 focus-within:border-[#2f6b4f] focus-within:bg-white focus-within:ring-4 focus-within:ring-[#2f6b4f]/10">
-                <span className="text-sm font-semibold text-[#526158]">
-                  +/-
-                </span>
-                <input
-                  className="w-full bg-transparent py-1 text-sm font-semibold text-[#14211b] outline-none"
-                  min="0"
-                  onChange={(event) =>
-                    updateField("flexibleDays", event.target.value)
-                  }
-                  type="number"
-                  value={formState.flexibleDays}
-                />
-                <span className="text-sm font-semibold text-[#526158]">
-                  days
-                </span>
-              </div>
-              <FieldError>{errors.flexibleDays}</FieldError>
-            </label>
+            <SearchCabinField
+              error={errors.cabin}
+              onChange={(value) => updateField("cabin", value)}
+              value={formState.cabin}
+            />
+            <SearchTravelersFields
+              flexibleDays={formState.flexibleDays}
+              flexibleDaysError={errors.flexibleDays}
+              maxStops={formState.maxStops}
+              maxStopsError={errors.maxStops}
+              onChangeFlexibleDays={(value) =>
+                updateField("flexibleDays", value)
+              }
+              onChangeMaxStops={(value) => updateField("maxStops", value)}
+              onChangePassengers={(value) => updateField("passengers", value)}
+              passengers={formState.passengers}
+              passengersError={errors.passengers}
+            />
           </div>
 
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <button
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-[#2f6b4f] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(47,107,79,0.18)] transition hover:bg-[#25573f]"
-              type="submit"
-            >
-              <SearchIcon className="h-4 w-4" />
-              Search
-              <ArrowIcon className="h-4 w-4" />
-            </button>
-            <button
-              className="rounded-md border border-[#b8c8b2] px-5 py-3 text-sm font-semibold text-[#24382d] transition hover:bg-[#edf3ea]"
-              onClick={() => {
-                setFormState(initialFormState);
-                setErrors({});
-                setStatusMessage("");
-              }}
-              type="button"
-            >
-              Reset defaults
-            </button>
-          </div>
-
-          {statusMessage ? (
-            <p className="mt-4 rounded-md bg-[#edf3ea] px-4 py-3 text-sm font-semibold text-[#2f6b4f]">
-              {statusMessage}
-            </p>
-          ) : null}
+          <SearchSubmitActions
+            onReset={handleResetDefaults}
+            statusMessage={statusMessage}
+          />
         </form>
 
         <aside className="space-y-4">
@@ -684,127 +512,12 @@ export function TripSearchForm(): JSX.Element {
         </aside>
       </section>
 
-      <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 md:p-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
-              Saved searches
-            </p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[#14211b]">
-              Run a previous trip search
-            </h3>
-          </div>
-          <p className="text-sm text-[#637268]">
-            {isLoaded ? `${savedSearches.length} saved` : "Loading"}
-          </p>
-        </div>
-
-        {isLoaded && savedSearches.length > 0 ? (
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {savedSearches.map((search) => {
-              const supportStatus = getSavedSearchSupportStatus(search);
-              const supportMessage =
-                supportStatus.message ?? "Needs update before running.";
-
-              return (
-                <article
-                  className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
-                  key={search.id}
-                >
-                  <div className="flex flex-col gap-4">
-                    <div>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                        <p className="text-sm font-semibold text-[#24382d]">
-                          {search.name}
-                        </p>
-                        {!supportStatus.isSupported ? (
-                          <span className="w-fit rounded-md border border-[#ead99d] bg-[#fff9df] px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#6d5520]">
-                            Needs update
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="mt-2 text-lg font-semibold tracking-tight text-[#14211b]">
-                        {formatCodes(search.originCodes)} to{" "}
-                        {formatCodes(search.destinationCodes)}
-                      </p>
-                    </div>
-
-                    <dl className="grid gap-3 text-sm leading-6 text-[#526158] sm:grid-cols-2">
-                      <div>
-                        <dt className="font-semibold text-[#24382d]">
-                          Trip type
-                        </dt>
-                        <dd>{formatTripType(search.tripType)}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-[#24382d]">Cabin</dt>
-                        <dd>{cabinLabels[search.cabin]}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-[#24382d]">
-                          Depart
-                        </dt>
-                        <dd>{formatDate(search.departDate)}</dd>
-                      </div>
-                      {search.tripType === "round_trip" ? (
-                        <div>
-                          <dt className="font-semibold text-[#24382d]">
-                            Return
-                          </dt>
-                          <dd>{formatDate(search.returnDate)}</dd>
-                        </div>
-                      ) : null}
-                      <div>
-                        <dt className="font-semibold text-[#24382d]">
-                          Passengers
-                        </dt>
-                        <dd>{formatNumber(search.passengers)}</dd>
-                      </div>
-                    </dl>
-
-                    {!supportStatus.isSupported ? (
-                      <p className="rounded-md border border-[#ead99d] bg-white px-3 py-2 text-sm leading-6 text-[#6d5520]">
-                        {supportMessage} Recreate this search with a supported
-                        airport or metro area, or delete it.
-                      </p>
-                    ) : null}
-
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <button
-                        className={
-                          supportStatus.isSupported
-                            ? "inline-flex items-center justify-center gap-2 rounded-md bg-[#2f6b4f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25573f]"
-                            : "inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-md bg-[#9da99f] px-4 py-2.5 text-sm font-semibold text-white"
-                        }
-                        disabled={!supportStatus.isSupported}
-                        onClick={() => handleRunSavedSearch(search)}
-                        type="button"
-                      >
-                        Run search
-                        <ArrowIcon className="h-4 w-4" />
-                      </button>
-                      <button
-                        className="rounded-md border border-[#b8c8b2] px-4 py-2.5 text-sm font-semibold text-[#24382d] transition hover:bg-white"
-                        onClick={() => handleDeleteSavedSearch(search.id)}
-                        type="button"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : null}
-
-        {isLoaded && savedSearches.length === 0 ? (
-          <div className="mt-5 rounded-md border border-dashed border-[#b8c8b2] bg-[#f7faf6] p-5 text-sm leading-6 text-[#526158]">
-            No saved searches yet. Run a new search above, review the results,
-            then save useful trips from the Results page.
-          </div>
-        ) : null}
-      </section>
+      <SavedSearchesList
+        isLoaded={isLoaded}
+        onDeleteSearch={handleDeleteSavedSearch}
+        onRunSearch={handleRunSavedSearch}
+        savedSearches={savedSearchItems}
+      />
     </div>
   );
 }
