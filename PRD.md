@@ -535,7 +535,9 @@ The app must not rely on airline scraping for MVP.
 
 ### 7.5 Airport data
 
-Airport and airport group data can be static.
+Airport and airport group data can be static. Production `/search` currently
+uses curated static airport and metro-area data for autocomplete and validation;
+it does not use live airport APIs.
 
 Data should include:
 
@@ -765,7 +767,7 @@ Initial route inventory:
 - `/` redirects to `/dashboard`
 - `/dashboard` summarizes browser-persistent wallet totals, transfer opportunities, and required transfer warning
 - `/wallet` supports browser-persistent manual account add/edit/delete with empty-state-ready structure
-- `/search` supports browser-persistent saved trip searches with airport group expansion, inline validation, run-search, and delete actions
+- `/search` supports browser-persistent saved trip searches with curated airport autocomplete, airport group expansion, supported-code inline validation, run-search, and delete actions
 - `/design/search` keeps the design-only run-search-first prototype as a reference, including airport autocomplete mock states
 - `/design/results` keeps the design-only results, edit-search, route-detail, and save-search prototype as a reference
 - `/results` shows deterministic mock cash and award results ranked by the initial recommendation engine
@@ -822,11 +824,11 @@ Exit criteria:
 - App can expand airport groups into airport codes.
 - Search can be saved.
 
-Current implementation status as of June 7, 2026:
+Current implementation status as of June 10, 2026:
 
-- Completed: approved design prototype route, revised run-search-first design reference, airport autocomplete design reference on `/design/search`, browser-persistent saved-search localStorage helpers, browser-persistent active-search localStorage helpers, trip search validation helpers, real `/search` trip search form, active-search creation on submit, `/results` navigation after valid search, airport group expansion during validation, inline validation errors, result-page save-search action, and compact dashboard saved-search summary.
-- Covered by unit tests: saved-search and active-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, required search fields, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, active-search selection priority, and non-negative max stops/flexible days.
-- Remaining: production airport autocomplete beyond curated group datalist, alerts, Firebase persistence, authenticated user ownership, and live provider integrations.
+- Completed: approved design prototype route, revised run-search-first design reference, airport autocomplete design reference on `/design/search`, curated static airport data, production airport autocomplete on `/search`, browser-persistent saved-search localStorage helpers, browser-persistent active-search localStorage helpers, trip search validation helpers, real `/search` trip search form, active-search creation on submit, `/results` navigation after valid search, airport group expansion during validation, inline validation errors, result-page save-search action, and compact dashboard saved-search summary.
+- Covered by unit tests: saved-search and active-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, required search fields, supported airport and group validation, unsupported airport rejection, autocomplete ranking and limits, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, active-search selection priority, and non-negative max stops/flexible days.
+- Remaining: alerts, Firebase persistence, authenticated user ownership, expanded airport coverage, and live provider integrations.
 
 ---
 
@@ -930,8 +932,10 @@ Exit criteria:
 
 - Search name is required for saved searches.
 - Origin is required.
+- Origin must be a supported airport or metro-area code.
 - Destination is required.
-- Origin and destination cannot be identical.
+- Destination must be a supported airport or metro-area code.
+- Origin and destination cannot be identical after airport group expansion.
 - Departure date is required.
 - Return date is required for round-trip searches.
 - Return date cannot be before departure date.

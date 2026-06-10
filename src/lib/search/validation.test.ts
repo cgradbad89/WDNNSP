@@ -46,6 +46,66 @@ describe("search validation", () => {
     ).toEqual({});
   });
 
+  it("accepts supported airport codes", () => {
+    expect(
+      validateSavedSearchInput({
+        name: "Tokyo",
+        originCodes: ["IAD"],
+        destinationCodes: ["HND"],
+        departDate: "2026-10-18",
+        tripType: "one_way",
+        passengers: 2,
+        cabin: "business",
+      }),
+    ).toEqual({});
+  });
+
+  it("accepts supported airport group codes", () => {
+    expect(
+      validateSavedSearchInput({
+        name: "Tokyo",
+        originCodes: ["WAS"],
+        destinationCodes: ["TYO"],
+        departDate: "2026-10-18",
+        tripType: "one_way",
+        passengers: 2,
+        cabin: "business",
+      }),
+    ).toEqual({});
+  });
+
+  it("rejects unsupported origin codes", () => {
+    expect(
+      validateSavedSearchInput({
+        name: "Tokyo",
+        originCodes: ["ZZZ"],
+        destinationCodes: ["TYO"],
+        departDate: "2026-10-18",
+        tripType: "one_way",
+        passengers: 2,
+        cabin: "business",
+      }),
+    ).toEqual({
+      originCodes: "Choose a supported origin airport or metro area.",
+    });
+  });
+
+  it("rejects unsupported destination codes", () => {
+    expect(
+      validateSavedSearchInput({
+        name: "Tokyo",
+        originCodes: ["WAS"],
+        destinationCodes: ["ZZZ"],
+        departDate: "2026-10-18",
+        tripType: "one_way",
+        passengers: 2,
+        cabin: "business",
+      }),
+    ).toEqual({
+      destinationCodes: "Choose a supported destination airport or metro area.",
+    });
+  });
+
   it("rejects return date before departure date", () => {
     expect(
       validateSavedSearchInput({
@@ -75,7 +135,7 @@ describe("search validation", () => {
         cabin: "economy",
       }),
     ).toEqual({
-      destinationCodes: "Origin and destination cannot include the same airport.",
+      destinationCodes: "Origin and destination cannot be the same.",
     });
   });
 

@@ -1,4 +1,6 @@
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
+import { AIRPORTS } from "@/data/airports";
+import { isSupportedAirportSelection } from "@/lib/airports/autocomplete";
 import { expandAirportCode } from "@/lib/airports/groups";
 import type { Cabin } from "@/types/flights";
 import type { TripSearch } from "@/types/search";
@@ -31,16 +33,32 @@ function normalizeCodes(codes: string[] | undefined): string[] {
     .filter(Boolean);
 }
 
+function normalizeSelections(codes: string[] | undefined): string[] {
+  if (!codes) {
+    return [];
+  }
+
+  return codes.map((code) => code.trim().toUpperCase()).filter(Boolean);
+}
+
 function containsSharedCode(leftCodes: string[], rightCodes: string[]): boolean {
   const rightCodeSet = new Set(rightCodes);
 
   return leftCodes.some((code) => rightCodeSet.has(code));
 }
 
+function hasUnsupportedSelection(codes: string[]): boolean {
+  return codes.some(
+    (code) => !isSupportedAirportSelection(code, AIRPORTS, AIRPORT_GROUPS),
+  );
+}
+
 export function validateSavedSearchInput(
   input: Partial<TripSearch> & { name?: string },
 ): SearchValidationErrors {
   const errors: SearchValidationErrors = {};
+  const originSelections = normalizeSelections(input.originCodes);
+  const destinationSelections = normalizeSelections(input.destinationCodes);
   const originCodes = normalizeCodes(input.originCodes);
   const destinationCodes = normalizeCodes(input.destinationCodes);
 
@@ -48,21 +66,27 @@ export function validateSavedSearchInput(
     errors.name = "Name is required.";
   }
 
-  if (originCodes.length === 0) {
+  if (originSelections.length === 0) {
     errors.originCodes = "Origin is required.";
+  } else if (hasUnsupportedSelection(originSelections)) {
+    errors.originCodes = "Choose a supported origin airport or metro area.";
   }
 
-  if (destinationCodes.length === 0) {
+  if (destinationSelections.length === 0) {
     errors.destinationCodes = "Destination is required.";
+  } else if (hasUnsupportedSelection(destinationSelections)) {
+    errors.destinationCodes =
+      "Choose a supported destination airport or metro area.";
   }
 
   if (
+    !errors.originCodes &&
+    !errors.destinationCodes &&
     originCodes.length > 0 &&
     destinationCodes.length > 0 &&
     containsSharedCode(originCodes, destinationCodes)
   ) {
-    errors.destinationCodes =
-      "Origin and destination cannot include the same airport.";
+    errors.destinationCodes = "Origin and destination cannot be the same.";
   }
 
   if (!input.departDate) {

@@ -4,6 +4,7 @@ import type { ChangeEvent, FormEvent, JSX } from "react";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
+import { AirportAutocomplete } from "@/components/search/AirportAutocomplete";
 import { MOCK_POINTS_ACCOUNTS } from "@/data/mockPointsAccounts";
 import { expandAirportCode } from "@/lib/airports/groups";
 import {
@@ -468,39 +469,26 @@ export function TripSearchForm(): JSX.Element {
           </label>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-sm font-semibold text-[#24382d]">
-                From
-              </span>
-              <input
-                className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-base font-semibold uppercase text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-                list="airport-group-options"
-                onChange={(event) => updateField("origin", event.target.value)}
-                type="text"
-                value={formState.origin}
-              />
-              <FieldError>{errors.originCodes}</FieldError>
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold text-[#24382d]">To</span>
-              <input
-                className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-base font-semibold uppercase text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-                list="airport-group-options"
-                onChange={(event) =>
-                  updateField("destination", event.target.value)
-                }
-                type="text"
-                value={formState.destination}
-              />
-              <FieldError>{errors.destinationCodes}</FieldError>
-            </label>
-            <datalist id="airport-group-options">
-              {AIRPORT_GROUPS.map((group) => (
-                <option key={group.code} value={group.code}>
-                  {group.name}
-                </option>
-              ))}
-            </datalist>
+            <AirportAutocomplete
+              error={errors.originCodes}
+              hint="Choose an airport or supported metro area."
+              id="origin"
+              label="From"
+              onChange={(value) => updateField("origin", value)}
+              onSelect={() => undefined}
+              placeholder="WAS, IAD, Tokyo"
+              value={formState.origin}
+            />
+            <AirportAutocomplete
+              error={errors.destinationCodes}
+              hint="Airport groups search every listed airport."
+              id="destination"
+              label="To"
+              onChange={(value) => updateField("destination", value)}
+              onSelect={() => undefined}
+              placeholder="TYO, HND, London"
+              value={formState.destination}
+            />
           </div>
 
           <div className="mt-4 grid gap-4 md:grid-cols-3">
