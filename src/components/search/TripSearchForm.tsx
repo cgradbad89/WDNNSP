@@ -21,6 +21,7 @@ import {
   saveSavedSearches,
 } from "@/lib/search/storage";
 import {
+  getSavedSearchSupportStatus,
   hasSearchValidationErrors,
   type SearchValidationErrors,
   validateSavedSearchInput,
@@ -379,6 +380,13 @@ export function TripSearchForm(): JSX.Element {
   }
 
   function handleRunSavedSearch(search: SavedSearch): void {
+    const supportStatus = getSavedSearchSupportStatus(search);
+
+    if (!supportStatus.isSupported) {
+      setStatusMessage(supportStatus.message ?? "Needs update before running.");
+      return;
+    }
+
     saveActiveSearch(search);
     setStatusMessage(`Opening results for "${search.name}".`);
     router.push("/results");
@@ -693,73 +701,100 @@ export function TripSearchForm(): JSX.Element {
 
         {isLoaded && savedSearches.length > 0 ? (
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {savedSearches.map((search) => (
-              <article
-                className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
-                key={search.id}
-              >
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <p className="text-sm font-semibold text-[#24382d]">
-                      {search.name}
-                    </p>
-                    <p className="mt-2 text-lg font-semibold tracking-tight text-[#14211b]">
-                      {formatCodes(search.originCodes)} to{" "}
-                      {formatCodes(search.destinationCodes)}
-                    </p>
-                  </div>
+            {savedSearches.map((search) => {
+              const supportStatus = getSavedSearchSupportStatus(search);
+              const supportMessage =
+                supportStatus.message ?? "Needs update before running.";
 
-                  <dl className="grid gap-3 text-sm leading-6 text-[#526158] sm:grid-cols-2">
+              return (
+                <article
+                  className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
+                  key={search.id}
+                >
+                  <div className="flex flex-col gap-4">
                     <div>
-                      <dt className="font-semibold text-[#24382d]">
-                        Trip type
-                      </dt>
-                      <dd>{formatTripType(search.tripType)}</dd>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <p className="text-sm font-semibold text-[#24382d]">
+                          {search.name}
+                        </p>
+                        {!supportStatus.isSupported ? (
+                          <span className="w-fit rounded-md border border-[#ead99d] bg-[#fff9df] px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#6d5520]">
+                            Needs update
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-lg font-semibold tracking-tight text-[#14211b]">
+                        {formatCodes(search.originCodes)} to{" "}
+                        {formatCodes(search.destinationCodes)}
+                      </p>
                     </div>
-                    <div>
-                      <dt className="font-semibold text-[#24382d]">Cabin</dt>
-                      <dd>{cabinLabels[search.cabin]}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold text-[#24382d]">Depart</dt>
-                      <dd>{formatDate(search.departDate)}</dd>
-                    </div>
-                    {search.tripType === "round_trip" ? (
+
+                    <dl className="grid gap-3 text-sm leading-6 text-[#526158] sm:grid-cols-2">
                       <div>
                         <dt className="font-semibold text-[#24382d]">
-                          Return
+                          Trip type
                         </dt>
-                        <dd>{formatDate(search.returnDate)}</dd>
+                        <dd>{formatTripType(search.tripType)}</dd>
                       </div>
-                    ) : null}
-                    <div>
-                      <dt className="font-semibold text-[#24382d]">
-                        Passengers
-                      </dt>
-                      <dd>{formatNumber(search.passengers)}</dd>
-                    </div>
-                  </dl>
+                      <div>
+                        <dt className="font-semibold text-[#24382d]">Cabin</dt>
+                        <dd>{cabinLabels[search.cabin]}</dd>
+                      </div>
+                      <div>
+                        <dt className="font-semibold text-[#24382d]">
+                          Depart
+                        </dt>
+                        <dd>{formatDate(search.departDate)}</dd>
+                      </div>
+                      {search.tripType === "round_trip" ? (
+                        <div>
+                          <dt className="font-semibold text-[#24382d]">
+                            Return
+                          </dt>
+                          <dd>{formatDate(search.returnDate)}</dd>
+                        </div>
+                      ) : null}
+                      <div>
+                        <dt className="font-semibold text-[#24382d]">
+                          Passengers
+                        </dt>
+                        <dd>{formatNumber(search.passengers)}</dd>
+                      </div>
+                    </dl>
 
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <button
-                      className="inline-flex items-center justify-center gap-2 rounded-md bg-[#2f6b4f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25573f]"
-                      onClick={() => handleRunSavedSearch(search)}
-                      type="button"
-                    >
-                      Run search
-                      <ArrowIcon className="h-4 w-4" />
-                    </button>
-                    <button
-                      className="rounded-md border border-[#b8c8b2] px-4 py-2.5 text-sm font-semibold text-[#24382d] transition hover:bg-white"
-                      onClick={() => handleDeleteSavedSearch(search.id)}
-                      type="button"
-                    >
-                      Delete
-                    </button>
+                    {!supportStatus.isSupported ? (
+                      <p className="rounded-md border border-[#ead99d] bg-white px-3 py-2 text-sm leading-6 text-[#6d5520]">
+                        {supportMessage} Recreate this search with a supported
+                        airport or metro area, or delete it.
+                      </p>
+                    ) : null}
+
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <button
+                        className={
+                          supportStatus.isSupported
+                            ? "inline-flex items-center justify-center gap-2 rounded-md bg-[#2f6b4f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25573f]"
+                            : "inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-md bg-[#9da99f] px-4 py-2.5 text-sm font-semibold text-white"
+                        }
+                        disabled={!supportStatus.isSupported}
+                        onClick={() => handleRunSavedSearch(search)}
+                        type="button"
+                      >
+                        Run search
+                        <ArrowIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        className="rounded-md border border-[#b8c8b2] px-4 py-2.5 text-sm font-semibold text-[#24382d] transition hover:bg-white"
+                        onClick={() => handleDeleteSavedSearch(search.id)}
+                        type="button"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         ) : null}
 

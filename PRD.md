@@ -448,6 +448,13 @@ type SavedSearch = {
 };
 ```
 
+Legacy browser-persistent saved searches may contain airport or metro-area
+codes that are no longer in the curated static airport database. Those saved
+searches should remain visible so users can review and delete them, but they
+must be marked as needing update and must not be run directly. The app should
+not automatically delete, mutate, or "fix" saved-search data with unsupported
+codes.
+
 Alerts can be added later.
 
 ---
@@ -768,7 +775,7 @@ Initial route inventory:
 - `/` redirects to `/dashboard`
 - `/dashboard` summarizes browser-persistent wallet totals, transfer opportunities, and required transfer warning
 - `/wallet` supports browser-persistent manual account add/edit/delete with empty-state-ready structure
-- `/search` supports browser-persistent saved trip searches with curated airport autocomplete, airport group expansion, supported-code inline validation, run-search, and delete actions
+- `/search` supports browser-persistent saved trip searches with curated airport autocomplete, airport group expansion, supported-code inline validation, run-search, delete actions, and visible unsupported legacy saved-search states
 - `/results` includes an edit-search drawer that reuses curated airport autocomplete and supported-code validation for active-search edits
 - `/design/search` keeps the design-only run-search-first prototype as a reference, including airport autocomplete mock states
 - `/design/results` keeps the design-only results, edit-search, route-detail, and save-search prototype as a reference
@@ -828,8 +835,8 @@ Exit criteria:
 
 Current implementation status as of June 10, 2026:
 
-- Completed: approved design prototype route, revised run-search-first design reference, airport autocomplete design reference on `/design/search`, curated static airport data, production airport autocomplete on `/search` and the `/results` edit-search drawer, browser-persistent saved-search localStorage helpers, browser-persistent active-search localStorage helpers, trip search validation helpers, real `/search` trip search form, active-search creation on submit, `/results` navigation after valid search, airport group expansion during validation, inline validation errors, result-page save-search action, and compact dashboard saved-search summary.
-- Covered by unit tests: saved-search and active-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, required search fields, supported airport and group validation, unsupported airport rejection, autocomplete ranking and limits, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, active-search selection priority, and non-negative max stops/flexible days.
+- Completed: approved design prototype route, revised run-search-first design reference, airport autocomplete design reference on `/design/search`, curated static airport data, production airport autocomplete on `/search` and the `/results` edit-search drawer, browser-persistent saved-search localStorage helpers, browser-persistent active-search localStorage helpers, trip search validation helpers, real `/search` trip search form, active-search creation on submit, `/results` navigation after valid search, airport group expansion during validation, inline validation errors, unsupported legacy saved-search blocking on `/search`, supported-only saved-search fallback on `/results`, result-page save-search action, and compact dashboard saved-search summary.
+- Covered by unit tests: saved-search and active-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, required search fields, supported airport and group validation, saved-search support-status validation, unsupported airport rejection, unsupported saved-search fallback skipping, autocomplete ranking and limits, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, active-search selection priority, and non-negative max stops/flexible days.
 - Remaining: alerts, Firebase persistence, authenticated user ownership, expanded airport coverage, and live provider integrations.
 
 ---
@@ -938,6 +945,9 @@ Exit criteria:
 - Destination is required.
 - Destination must be a supported airport or metro-area code.
 - Origin and destination cannot be identical after airport group expansion.
+- Legacy saved searches with unsupported airport or metro-area codes remain
+  visible, but cannot be run directly and are skipped by `/results` fallback
+  selection.
 - Departure date is required.
 - Return date is required for round-trip searches.
 - Return date cannot be before departure date.

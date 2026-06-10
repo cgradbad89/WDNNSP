@@ -3,7 +3,7 @@ import { AIRPORTS } from "@/data/airports";
 import { isSupportedAirportSelection } from "@/lib/airports/autocomplete";
 import { expandAirportCode } from "@/lib/airports/groups";
 import type { Cabin } from "@/types/flights";
-import type { TripSearch } from "@/types/search";
+import type { SavedSearch, TripSearch } from "@/types/search";
 
 const cabins: Cabin[] = ["economy", "premium_economy", "business", "first"];
 
@@ -21,6 +21,14 @@ export type SearchValidationErrors = Partial<
     string
   >
 >;
+
+export interface SavedSearchSupportStatus {
+  isSupported: boolean;
+  originSupported: boolean;
+  destinationSupported: boolean;
+  sameRoute: boolean;
+  message?: string;
+}
 
 function normalizeCodes(codes: string[] | undefined): string[] {
   if (!codes) {
@@ -51,6 +59,45 @@ function hasUnsupportedSelection(codes: string[]): boolean {
   return codes.some(
     (code) => !isSupportedAirportSelection(code, AIRPORTS, AIRPORT_GROUPS),
   );
+}
+
+export function getSavedSearchSupportStatus(
+  search: SavedSearch,
+): SavedSearchSupportStatus {
+  const originSelections = normalizeSelections(search.originCodes);
+  const destinationSelections = normalizeSelections(search.destinationCodes);
+  const originCodes = normalizeCodes(search.originCodes);
+  const destinationCodes = normalizeCodes(search.destinationCodes);
+  const originSupported =
+    originSelections.length > 0 && !hasUnsupportedSelection(originSelections);
+  const destinationSupported =
+    destinationSelections.length > 0 &&
+    !hasUnsupportedSelection(destinationSelections);
+  const sameRoute =
+    originCodes.length > 0 &&
+    destinationCodes.length > 0 &&
+    containsSharedCode(originCodes, destinationCodes);
+  const isSupported = originSupported && destinationSupported && !sameRoute;
+  let message: string | undefined;
+
+  if (!originSupported) {
+    message = "Needs update: choose a supported origin airport or metro area.";
+  } else if (!destinationSupported) {
+    message =
+      "Needs update: choose a supported destination airport or metro area.";
+  } else if (sameRoute) {
+    message = "Needs update: origin and destination cannot be the same.";
+  } else if (!isSupported) {
+    message = "Needs update before running.";
+  }
+
+  return {
+    isSupported,
+    originSupported,
+    destinationSupported,
+    sameRoute,
+    message,
+  };
 }
 
 export function validateSavedSearchInput(
