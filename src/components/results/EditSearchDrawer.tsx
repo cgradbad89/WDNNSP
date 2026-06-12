@@ -36,7 +36,7 @@ interface EditSearchDrawerProps {
     value: EditSearchFormState[Field],
   ) => void;
   onClose: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
 }
 
 export function EditSearchDrawer({

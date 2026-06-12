@@ -74,7 +74,7 @@ function formatNumber(value: number): string {
 
 interface SearchSummaryStripProps {
   onEdit: (event: MouseEvent<HTMLButtonElement>) => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   saveStatus: string;
   search: SavedSearch;
 }
@@ -129,7 +129,9 @@ export function SearchSummaryStrip({
           </button>
           <button
             className="rounded-md bg-[#2f6b4f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25573f]"
-            onClick={onSave}
+            onClick={() => {
+              void onSave();
+            }}
             type="button"
           >
             Save search

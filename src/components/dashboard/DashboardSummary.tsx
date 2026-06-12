@@ -8,7 +8,7 @@ import {
   getTotalAirlineMiles,
   getTotalFlexiblePoints,
 } from "@/lib/points/totals";
-import { loadSavedSearches } from "@/lib/search/storage";
+import { useSearchData } from "@/lib/search/useSearchData";
 import { getTransferOptionsFromWallet } from "@/lib/transferPartners/lookup";
 import { useWalletAccounts } from "@/lib/wallet/useWalletAccounts";
 import type { SavedSearch } from "@/types/search";
@@ -63,7 +63,8 @@ function formatDateRange(search: SavedSearch): string {
 
 export function DashboardSummary(): JSX.Element {
   const wallet = useWalletAccounts({ seedLocalAccounts: true });
-  const isLoaded = !wallet.isLoading;
+  const searchData = useSearchData();
+  const isWalletLoaded = !wallet.isLoading;
   const accounts = wallet.accounts;
   const totalFlexiblePoints = useMemo(
     () => getTotalFlexiblePoints(accounts),
@@ -77,16 +78,16 @@ export function DashboardSummary(): JSX.Element {
     () => getTransferOptionsFromWallet(accounts, TRANSFER_PARTNERS),
     [accounts],
   );
-  const savedSearches = useMemo(
-    () => (isLoaded ? loadSavedSearches() : []),
-    [isLoaded],
-  );
+  const savedSearches = searchData.savedSearches;
   const walletSourceLabel =
     wallet.source === "cloud" ? "cloud wallet" : "browser wallet";
+  const searchSourceLabel =
+    searchData.source === "cloud" ? "Firestore saved searches" : "browser saved searches";
   const summaryCards = [
     {
       label: "Flexible points",
       value: numberFormatter.format(totalFlexiblePoints),
+      isLoading: wallet.isLoading,
       note:
         wallet.source === "cloud"
           ? "Signed-in Firestore balances across credit card currencies."
@@ -95,6 +96,7 @@ export function DashboardSummary(): JSX.Element {
     {
       label: "Airline miles",
       value: numberFormatter.format(totalAirlineMiles),
+      isLoading: wallet.isLoading,
       note:
         wallet.source === "cloud"
           ? "Signed-in Firestore airline balances."
@@ -103,12 +105,17 @@ export function DashboardSummary(): JSX.Element {
     {
       label: "Transfer options",
       value: numberFormatter.format(transferOptions.length),
+      isLoading: wallet.isLoading,
       note: "Active direct partners available from this wallet.",
     },
     {
       label: "Saved searches",
       value: numberFormatter.format(savedSearches.length),
-      note: "Trip criteria saved locally in this browser.",
+      isLoading: searchData.isLoading,
+      note:
+        searchData.source === "cloud"
+          ? "Trip criteria synced for this signed-in account."
+          : "Trip criteria saved locally in this browser.",
     },
   ];
 
@@ -124,9 +131,9 @@ export function DashboardSummary(): JSX.Element {
               Decide which points and miles option to check first.
             </h2>
             <p className="max-w-2xl text-base leading-7 text-[#526158]">
-              WDNNSP reads your {walletSourceLabel}, summarizes saved balances,
-              and shows transfer opportunities before live flight APIs are
-              added.
+              WDNNSP reads your {walletSourceLabel} and {searchSourceLabel},
+              summarizes saved balances, and shows transfer opportunities
+              before live flight APIs are added.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -166,6 +173,16 @@ export function DashboardSummary(): JSX.Element {
         </section>
       ) : null}
 
+      {searchData.error ? (
+        <section
+          className="rounded-lg border border-[#ead99d] bg-[#fff9df] p-5 text-sm leading-6 text-[#5d4c1d]"
+          role="alert"
+        >
+          <p className="font-semibold text-[#14211b]">Search warning</p>
+          <p className="mt-1">{searchData.error}</p>
+        </section>
+      ) : null}
+
       <section className="grid gap-4 md:grid-cols-4">
         {summaryCards.map((card) => (
           <article
@@ -174,7 +191,7 @@ export function DashboardSummary(): JSX.Element {
           >
             <p className="text-sm font-medium text-[#526158]">{card.label}</p>
             <p className="mt-3 text-2xl font-semibold tracking-tight">
-              {isLoaded ? card.value : "Loading"}
+              {card.isLoading ? "Loading" : card.value}
             </p>
             <p className="mt-3 text-sm leading-6 text-[#637268]">
               {card.note}
@@ -201,7 +218,11 @@ export function DashboardSummary(): JSX.Element {
           </Link>
         </div>
 
-        {savedSearches.length > 0 ? (
+        {searchData.isLoading ? (
+          <div className="mt-5 rounded-md border border-dashed border-[#b8c8b2] p-5 text-sm leading-6 text-[#526158]">
+            Loading saved searches.
+          </div>
+        ) : savedSearches.length > 0 ? (
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             {savedSearches.slice(0, 4).map((search) => (
               <article
@@ -247,7 +268,7 @@ export function DashboardSummary(): JSX.Element {
           </p>
         </div>
 
-        {!isLoaded ? (
+        {!isWalletLoaded ? (
           <div className="mt-5 rounded-md border border-dashed border-[#b8c8b2] p-5 text-sm text-[#526158]">
             Loading wallet transfer options.
           </div>

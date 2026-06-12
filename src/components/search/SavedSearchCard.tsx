@@ -6,8 +6,8 @@ import type { SavedSearch, TripType } from "@/types/search";
 import type { SavedSearchSupportStatus } from "@/lib/search/validation";
 
 interface SavedSearchCardProps {
-  onDeleteSearch: (searchId: string) => void;
-  onRunSearch: (search: SavedSearch) => void;
+  onDeleteSearch: (searchId: string) => void | Promise<void>;
+  onRunSearch: (search: SavedSearch) => void | Promise<void>;
   search: SavedSearch;
   supportStatus: SavedSearchSupportStatus;
 }
@@ -133,7 +133,9 @@ export function SavedSearchCard({
                 : "inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-md bg-[#9da99f] px-4 py-2.5 text-sm font-semibold text-white"
             }
             disabled={!supportStatus.isSupported}
-            onClick={() => onRunSearch(search)}
+            onClick={() => {
+              void onRunSearch(search);
+            }}
             type="button"
           >
             Run search
@@ -141,7 +143,9 @@ export function SavedSearchCard({
           </button>
           <button
             className="rounded-md border border-[#b8c8b2] px-4 py-2.5 text-sm font-semibold text-[#24382d] transition hover:bg-white"
-            onClick={() => onDeleteSearch(search.id)}
+            onClick={() => {
+              void onDeleteSearch(search.id);
+            }}
             type="button"
           >
             Delete

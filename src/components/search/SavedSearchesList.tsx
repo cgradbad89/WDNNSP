@@ -10,10 +10,12 @@ interface SavedSearchListItem {
   supportStatus: SavedSearchSupportStatus;
 }
 
+type SavedSearchActionResult = void | Promise<void>;
+
 interface SavedSearchesListProps {
   isLoaded: boolean;
-  onDeleteSearch: (searchId: string) => void;
-  onRunSearch: (search: SavedSearch) => void;
+  onDeleteSearch: (searchId: string) => SavedSearchActionResult;
+  onRunSearch: (search: SavedSearch) => SavedSearchActionResult;
   savedSearches: SavedSearchListItem[];
 }
 

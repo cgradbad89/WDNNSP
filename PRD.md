@@ -105,7 +105,9 @@ Current implementation:
 - Signing in creates or updates a minimal Firestore `users/{uid}` profile document.
 - Signed-in wallet balances sync to Firestore under the signed-in user. Signed-out wallet balances continue to use browser localStorage.
 - Existing local wallet data is never auto-migrated; signed-in users can explicitly import this device's local wallet into their cloud wallet.
-- Saved-search, active-search, and results data still use browser localStorage only; cloud sync for those records is future work.
+- Signed-in saved searches and active-search state sync to Firestore under the signed-in user. Signed-out saved searches and active-search state continue to use browser localStorage.
+- Existing local saved searches are never auto-migrated; signed-in users can explicitly import this device's local saved searches into cloud.
+- Search results, alerts, and live provider data remain future work and are not written to Firestore.
 
 ---
 
@@ -160,7 +162,7 @@ Wallet persistence:
 - Signed-in users read and write Firestore wallet documents scoped under `users/{uid}`.
 - Firestore is the source of truth for wallet balances while signed in.
 - Local wallet import to cloud is explicit and user-initiated.
-- Saved searches and active search state are not synced with the wallet in this phase.
+- Search sync uses separate user-scoped Firestore paths and keeps local imports explicit.
 
 ---
 
@@ -472,6 +474,14 @@ must be marked as needing update and must not be run directly. The app should
 not automatically delete, mutate, or "fix" saved-search data with unsupported
 codes.
 
+Saved search and active-search persistence:
+
+- Signed-out users read and write browser localStorage saved searches and active-search state.
+- Signed-in users read and write Firestore saved searches and active-search state scoped under `users/{uid}`.
+- Firestore is the source of truth for saved and active searches while signed in.
+- Local saved-search import to cloud is explicit and user-initiated.
+- Local saved searches are kept on this device after import.
+
 Alerts can be added later.
 
 ---
@@ -672,6 +682,30 @@ type TripSearch = {
 };
 ```
 
+Firestore search storage:
+
+```txt
+users/{uid}/savedSearches/{searchId}
+users/{uid}/activeSearch/current
+users/{uid}/searchMeta/current
+```
+
+Saved search documents store the existing `SavedSearch` shape, with `userId`
+normalized to the signed-in `uid` and undefined optional fields omitted before
+writing to Firestore.
+
+The active search document stores the same `SavedSearch`-compatible shape for
+the current results search.
+
+```ts
+type SearchMeta = {
+  initialized: boolean;
+  updatedAt: Timestamp;
+};
+```
+
+`searchMeta/current.initialized` distinguishes a never-initialized cloud saved-search list from an intentionally saved empty cloud saved-search list.
+
 ---
 
 ### 8.5 SearchResultSet
@@ -827,10 +861,10 @@ src/
 Initial route inventory:
 
 - `/` redirects to `/dashboard`
-- `/dashboard` summarizes local wallet totals when signed out and Firestore wallet totals when signed in, with transfer opportunities and the required transfer warning
+- `/dashboard` summarizes local wallet/search data when signed out and Firestore wallet/search data when signed in, with transfer opportunities and the required transfer warning
 - `/wallet` supports localStorage wallet add/edit/delete when signed out and Firestore wallet add/edit/delete when signed in, with explicit local-to-cloud import
-- `/search` supports browser-persistent saved trip searches with curated airport autocomplete, airport group expansion, supported-code inline validation, run-search, delete actions, and visible unsupported legacy saved-search states
-- `/results` includes an edit-search drawer that reuses curated airport autocomplete and supported-code validation for active-search edits
+- `/search` supports localStorage saved trip searches when signed out and Firestore saved trip searches when signed in, with explicit local-to-cloud import, curated airport autocomplete, airport group expansion, supported-code inline validation, run-search, delete actions, and visible unsupported legacy saved-search states
+- `/results` reads active search first, then saved searches, then the Tokyo fallback from the active local-or-cloud search source; it includes an edit-search drawer that reuses curated airport autocomplete and supported-code validation for active-search edits
 - `/design/search` keeps the design-only run-search-first prototype as a reference, including airport autocomplete mock states
 - `/design/results` keeps the design-only results, edit-search, route-detail, and save-search prototype as a reference
 - `/results` shows deterministic mock cash and award results ranked by the initial recommendation engine
@@ -860,11 +894,11 @@ Exit criteria:
 - Dashboard summarizes points balances.
 - App shows transfer options for flexible currencies.
 
-Current implementation status as of June 11, 2026:
+Current implementation status as of June 12, 2026:
 
 - Completed: app shell, navigation, dashboard route, wallet route, Firebase client initialization from public web config, Firebase Auth provider/context, Google sign-in, email/password sign-in and account creation, minimal Firestore `users/{uid}` profile writes after sign-in, Firestore wallet sync for signed-in users, localStorage wallet fallback for signed-out users, explicit local-wallet import to cloud, core TypeScript domain types, static points program data, static transfer partner data, airport group data, points total helpers, transfer partner lookup helpers, airport group expansion helpers, browser-persistent localStorage wallet add/edit/delete CRUD, and dashboard/search/results wallet summaries based on the active local-or-cloud wallet source.
 - Covered by unit tests: Firebase public-env config validation, app-safe auth user mapping, Firestore user-profile payload construction, Firestore wallet metadata/load helpers, wallet repository source selection, points balance totals, flexible and airline account filtering, transfer partner lookup, wallet-based transfer option deduping, airport group expansion, and browser wallet storage/repository CRUD helpers.
-- Remaining: saved-search cloud sync, active-search cloud sync, cross-tab cloud wallet sync, and live provider integrations.
+- Remaining: cross-tab cloud wallet sync and live provider integrations.
 
 ---
 
@@ -887,11 +921,11 @@ Exit criteria:
 - App can expand airport groups into airport codes.
 - Search can be saved.
 
-Current implementation status as of June 10, 2026:
+Current implementation status as of June 12, 2026:
 
-- Completed: approved design prototype route, revised run-search-first design reference, airport autocomplete design reference on `/design/search`, curated static airport data, production airport autocomplete on `/search` and the `/results` edit-search drawer, browser-persistent saved-search localStorage helpers, browser-persistent active-search localStorage helpers, trip search validation helpers, real `/search` trip search form, active-search creation on submit, `/results` navigation after valid search, airport group expansion during validation, inline validation errors, unsupported legacy saved-search blocking on `/search`, supported-only saved-search fallback on `/results`, result-page save-search action, and compact dashboard saved-search summary.
-- Covered by unit tests: saved-search and active-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, required search fields, supported airport and group validation, saved-search support-status validation, unsupported airport rejection, unsupported saved-search fallback skipping, autocomplete ranking and limits, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, active-search selection priority, and non-negative max stops/flexible days.
-- Remaining: alerts, saved-search cloud sync, authenticated search ownership beyond localStorage, expanded airport coverage, and live provider integrations.
+- Completed: approved design prototype route, revised run-search-first design reference, airport autocomplete design reference on `/design/search`, curated static airport data, production airport autocomplete on `/search` and the `/results` edit-search drawer, browser-persistent saved-search localStorage helpers, browser-persistent active-search localStorage helpers, signed-in Firestore saved-search sync, signed-in Firestore active-search sync, explicit local saved-search import to cloud, trip search validation helpers, real `/search` trip search form, active-search creation on submit, `/results` navigation after valid search, airport group expansion during validation, inline validation errors, unsupported legacy saved-search blocking on `/search`, supported-only saved-search fallback on `/results`, result-page save-search action, and compact dashboard saved-search summary.
+- Covered by unit tests: saved-search and active-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, Firestore search serializer and metadata helpers, search repository source selection and local saved/active wrappers, required search fields, supported airport and group validation, saved-search support-status validation, unsupported airport rejection, unsupported saved-search fallback skipping, autocomplete ranking and limits, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, active-search selection priority, and non-negative max stops/flexible days.
+- Remaining: alerts, expanded airport coverage, optional local import cleanup, and live provider integrations.
 
 ---
 
@@ -1092,7 +1126,7 @@ Stored data should be limited to:
 - Search results
 - Recommendation history, optional
 
-Current Firestore writes are limited to the minimal signed-in user profile at `users/{uid}` and signed-in wallet data under `users/{uid}/walletAccounts/{accountId}` plus `users/{uid}/walletMeta/current`. Saved searches, active searches, search results, and recommendation history are not written to Firestore yet.
+Current Firestore writes are limited to the minimal signed-in user profile at `users/{uid}`, signed-in wallet data under `users/{uid}/walletAccounts/{accountId}` plus `users/{uid}/walletMeta/current`, signed-in saved searches under `users/{uid}/savedSearches/{searchId}` plus `users/{uid}/searchMeta/current`, and signed-in active-search state under `users/{uid}/activeSearch/current`. Search results and recommendation history are not written to Firestore yet.
 
 ---
 

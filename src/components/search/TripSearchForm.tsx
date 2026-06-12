@@ -4,6 +4,7 @@ import type { FormEvent, JSX } from "react";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { SavedSearchesList } from "@/components/search/SavedSearchesList";
 import { SearchCabinField } from "@/components/search/SearchCabinField";
 import { SearchDateFields } from "@/components/search/SearchDateFields";
@@ -17,13 +18,14 @@ import {
   getTotalAirlineMiles,
   getTotalFlexiblePoints,
 } from "@/lib/points/totals";
-import { saveActiveSearch } from "@/lib/search/activeSearch";
 import {
   createSavedSearch,
-  deleteSavedSearch,
+  hasStoredSavedSearches,
   loadSavedSearches,
-  saveSavedSearches,
+  SAVED_SEARCHES_CHANGED_EVENT,
 } from "@/lib/search/storage";
+import type { SavedSearchesLoadResult } from "@/lib/search/repository";
+import { useSearchData } from "@/lib/search/useSearchData";
 import {
   getSavedSearchSupportStatus,
   hasSearchValidationErrors,
@@ -62,25 +64,69 @@ const initialFormState: SearchFormState = {
 };
 
 const numberFormatter = new Intl.NumberFormat("en-US");
+const emptyLocalSavedSearchesSnapshot: SavedSearchesLoadResult = {
+  searches: [],
+  hasStoredValue: false,
+  source: "local",
+};
 
-function subscribeToHydration(onStoreChange: () => void): () => void {
+function getLocalSavedSearchImportSnapshot(): SavedSearchesLoadResult {
+  return {
+    searches: loadSavedSearches(),
+    hasStoredValue: hasStoredSavedSearches(),
+    source: "local",
+  };
+}
+
+function subscribeToLocalSavedSearchImport(
+  onStoreChange: () => void,
+): () => void {
   if (typeof window === "undefined") {
     return () => undefined;
   }
 
   const timeoutId = window.setTimeout(onStoreChange, 0);
 
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener(SAVED_SEARCHES_CHANGED_EVENT, onStoreChange);
+
   return () => {
     window.clearTimeout(timeoutId);
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener(SAVED_SEARCHES_CHANGED_EVENT, onStoreChange);
   };
 }
 
-function getClientHydrationSnapshot(): boolean {
-  return true;
+function getLocalSavedSearchImportClientSnapshot(): string {
+  return JSON.stringify(getLocalSavedSearchImportSnapshot());
 }
 
-function getServerHydrationSnapshot(): boolean {
-  return false;
+function getLocalSavedSearchImportServerSnapshot(): string {
+  return JSON.stringify(emptyLocalSavedSearchesSnapshot);
+}
+
+function parseLocalSavedSearchImportSnapshot(
+  snapshot: string,
+): SavedSearchesLoadResult {
+  try {
+    const parsedSnapshot: unknown = JSON.parse(snapshot);
+
+    if (
+      typeof parsedSnapshot === "object" &&
+      parsedSnapshot !== null &&
+      !Array.isArray(parsedSnapshot) &&
+      Array.isArray((parsedSnapshot as SavedSearchesLoadResult).searches) &&
+      typeof (parsedSnapshot as SavedSearchesLoadResult).hasStoredValue ===
+        "boolean" &&
+      (parsedSnapshot as SavedSearchesLoadResult).source === "local"
+    ) {
+      return parsedSnapshot as SavedSearchesLoadResult;
+    }
+  } catch {
+    return emptyLocalSavedSearchesSnapshot;
+  }
+
+  return emptyLocalSavedSearchesSnapshot;
 }
 
 function normalizeSingleCode(value: string): string[] {
@@ -150,19 +196,50 @@ function clearErrorsForField(
   return nextErrors;
 }
 
+function mergeLocalSavedSearchesForImport({
+  cloudSearches,
+  localSearches,
+  uid,
+}: {
+  cloudSearches: SavedSearch[];
+  localSearches: SavedSearch[];
+  uid: string;
+}): {
+  importedCount: number;
+  nextSearches: SavedSearch[];
+} {
+  const existingCloudIds = new Set(cloudSearches.map((search) => search.id));
+  const importedSearches = localSearches
+    .filter((search) => !existingCloudIds.has(search.id))
+    .map((search) => ({
+      ...search,
+      userId: uid,
+    }));
+
+  return {
+    importedCount: importedSearches.length,
+    nextSearches: [...importedSearches, ...cloudSearches],
+  };
+}
+
 export function TripSearchForm(): JSX.Element {
   const router = useRouter();
+  const { user } = useAuth();
   const wallet = useWalletAccounts({ seedLocalAccounts: true });
-  const isLoaded = useSyncExternalStore(
-    subscribeToHydration,
-    getClientHydrationSnapshot,
-    getServerHydrationSnapshot,
+  const searchData = useSearchData();
+  const localSavedSearchSnapshot = useSyncExternalStore(
+    subscribeToLocalSavedSearchImport,
+    getLocalSavedSearchImportClientSnapshot,
+    getLocalSavedSearchImportServerSnapshot,
   );
+  const localSavedSearches = user
+    ? parseLocalSavedSearchImportSnapshot(localSavedSearchSnapshot)
+    : null;
   const [formState, setFormState] =
     useState<SearchFormState>(initialFormState);
   const [errors, setErrors] = useState<SearchValidationErrors>({});
   const [statusMessage, setStatusMessage] = useState("");
-  const [savedSearchVersion, setSavedSearchVersion] = useState(0);
+  const [isImporting, setIsImporting] = useState(false);
   const walletAccounts = wallet.accounts;
   const originCodes = normalizeSingleCode(formState.origin);
   const destinationCodes = normalizeSingleCode(formState.destination);
@@ -174,11 +251,8 @@ export function TripSearchForm(): JSX.Element {
   const topWalletAccounts = [...walletAccounts]
     .toSorted((firstAccount, secondAccount) => secondAccount.balance - firstAccount.balance)
     .slice(0, 3);
-  const savedSearches = useMemo(() => {
-    void savedSearchVersion;
-
-    return isLoaded ? loadSavedSearches() : [];
-  }, [isLoaded, savedSearchVersion]);
+  const isSearchLoaded = !searchData.isLoading;
+  const savedSearches = searchData.savedSearches;
   const savedSearchItems = useMemo(
     () =>
       savedSearches.map((search) => ({
@@ -187,6 +261,13 @@ export function TripSearchForm(): JSX.Element {
       })),
     [savedSearches],
   );
+  const hasImportableLocalSavedSearches =
+    Boolean(user) && (localSavedSearches?.searches.length ?? 0) > 0;
+  const searchModeLabel =
+    searchData.source === "cloud" ? "Cloud searches" : "Browser searches";
+  const searchModeMessage = user
+    ? "Search sync is on for this account. Saved searches and active results searches save to Firestore."
+    : "Searches save in this browser. Sign in to sync saved searches and active results searches across devices.";
 
   function updateField<Field extends keyof SearchFormState>(
     field: Field,
@@ -211,7 +292,9 @@ export function TripSearchForm(): JSX.Element {
     }
   }
 
-  function handleSearch(event: FormEvent<HTMLFormElement>): void {
+  async function handleSearch(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> {
     event.preventDefault();
 
     const validationInput = {
@@ -256,13 +339,25 @@ export function TripSearchForm(): JSX.Element {
       maxStops,
     });
 
-    saveActiveSearch(activeSearch);
-    setErrors({});
-    setStatusMessage("Search ready. Opening mock results...");
-    router.push("/results");
+    try {
+      await searchData.saveActiveSearch(activeSearch);
+      setErrors({});
+      setStatusMessage(
+        searchData.source === "cloud"
+          ? "Cloud search ready. Opening mock results..."
+          : "Search ready. Opening mock results...",
+      );
+      router.push("/results");
+    } catch {
+      setStatusMessage(
+        searchData.source === "cloud"
+          ? "Cloud active search could not be saved."
+          : "Active search could not be saved.",
+      );
+    }
   }
 
-  function handleRunSavedSearch(search: SavedSearch): void {
+  async function handleRunSavedSearch(search: SavedSearch): Promise<void> {
     const supportStatus = getSavedSearchSupportStatus(search);
 
     if (!supportStatus.isSupported) {
@@ -270,21 +365,75 @@ export function TripSearchForm(): JSX.Element {
       return;
     }
 
-    saveActiveSearch(search);
-    setStatusMessage(`Opening results for "${search.name}".`);
-    router.push("/results");
+    try {
+      await searchData.saveActiveSearch(search);
+      setStatusMessage(`Opening results for "${search.name}".`);
+      router.push("/results");
+    } catch {
+      setStatusMessage(
+        searchData.source === "cloud"
+          ? "Cloud active search could not be saved."
+          : "Active search could not be saved.",
+      );
+    }
   }
 
-  function handleDeleteSavedSearch(searchId: string): void {
-    saveSavedSearches(deleteSavedSearch(savedSearches, searchId));
-    setSavedSearchVersion((currentVersion) => currentVersion + 1);
-    setStatusMessage("Saved search deleted.");
+  async function handleDeleteSavedSearch(searchId: string): Promise<void> {
+    try {
+      await searchData.deleteSavedSearch(searchId);
+      setStatusMessage(
+        searchData.source === "cloud"
+          ? "Cloud saved search deleted."
+          : "Saved search deleted.",
+      );
+    } catch {
+      setStatusMessage(
+        searchData.source === "cloud"
+          ? "Cloud saved search could not be deleted."
+          : "Saved search could not be deleted.",
+      );
+    }
   }
 
   function handleResetDefaults(): void {
     setFormState(initialFormState);
     setErrors({});
     setStatusMessage("");
+  }
+
+  async function handleImportLocalSavedSearches(): Promise<void> {
+    if (!user || !localSavedSearches || localSavedSearches.searches.length === 0) {
+      return;
+    }
+
+    setIsImporting(true);
+    setStatusMessage("");
+
+    try {
+      const { importedCount, nextSearches } = mergeLocalSavedSearchesForImport({
+        cloudSearches: searchData.savedSearches,
+        localSearches: localSavedSearches.searches,
+        uid: user.uid,
+      });
+
+      if (importedCount === 0) {
+        setStatusMessage("This device's saved searches already exist in cloud.");
+        return;
+      }
+
+      await searchData.saveSavedSearches(nextSearches);
+      setStatusMessage(
+        `${importedCount} saved search${
+          importedCount === 1 ? "" : "es"
+        } copied to cloud. Local data was kept.`,
+      );
+    } catch {
+      setStatusMessage(
+        "This device's saved searches could not be imported to cloud.",
+      );
+    } finally {
+      setIsImporting(false);
+    }
   }
 
   return (
@@ -347,6 +496,56 @@ export function TripSearchForm(): JSX.Element {
           <p className="mt-1">{wallet.error}</p>
         </section>
       ) : null}
+
+      <section className="rounded-lg border border-[#d9e2d6] bg-white p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
+              {searchModeLabel}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-[#526158]">
+              {searchModeMessage}
+            </p>
+          </div>
+          <span className="w-fit rounded-md bg-[#edf3ea] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#2f6b4f]">
+            {searchData.source === "cloud" ? "Cloud sync on" : "Local fallback"}
+          </span>
+        </div>
+
+        {searchData.error ? (
+          <p
+            className="mt-4 rounded-md border border-[#ead99d] bg-[#fff9df] px-4 py-3 text-sm leading-6 text-[#5d4c1d]"
+            role="alert"
+          >
+            {searchData.error}
+          </p>
+        ) : null}
+
+        {hasImportableLocalSavedSearches ? (
+          <div className="mt-4 rounded-md border border-[#b8c8b2] bg-[#f7faf6] p-4 text-sm leading-6 text-[#526158]">
+            <p className="font-semibold text-[#24382d]">
+              This device has local saved searches.
+            </p>
+            <p className="mt-1">
+              Import copies them to cloud without deleting local data.
+              Unsupported searches are copied and remain marked as needing
+              update.
+            </p>
+            <button
+              className="mt-3 rounded-md bg-[#2f6b4f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25573f] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isImporting || searchData.isLoading}
+              onClick={() => {
+                void handleImportLocalSavedSearches();
+              }}
+              type="button"
+            >
+              {isImporting
+                ? "Importing..."
+                : "Import this device's saved searches to cloud"}
+            </button>
+          </div>
+        ) : null}
+      </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <form
@@ -476,7 +675,7 @@ export function TripSearchForm(): JSX.Element {
       </section>
 
       <SavedSearchesList
-        isLoaded={isLoaded}
+        isLoaded={isSearchLoaded}
         onDeleteSearch={handleDeleteSavedSearch}
         onRunSearch={handleRunSavedSearch}
         savedSearches={savedSearchItems}

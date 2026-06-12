@@ -20,8 +20,7 @@ export function AuthStatus(): JSX.Element {
               Signed in as {displayName}
             </p>
             <p className="mt-1 leading-5">
-              Wallet cloud sync is on for this account. Saved searches still
-              stay on this device for now.
+              Wallet and search cloud sync are on for this account.
             </p>
           </div>
           <button
@@ -50,7 +49,7 @@ export function AuthStatus(): JSX.Element {
       className="w-full max-w-xl rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3 text-sm text-[#405147] md:w-[440px]"
     >
       <p className="mb-3 font-semibold text-[#14211b]">
-        Sign in to sync your wallet.
+        Sign in to sync your wallet and searches.
       </p>
       <AuthForm />
     </section>

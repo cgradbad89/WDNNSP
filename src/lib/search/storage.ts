@@ -6,6 +6,7 @@ import {
 import { isSavedSearchArray } from "@/lib/search/validators";
 
 const SAVED_SEARCHES_STORAGE_KEY = "wdnnsp.savedSearches";
+export const SAVED_SEARCHES_CHANGED_EVENT = "wdnnsp.savedSearchesChanged";
 
 function hasBrowserStorage(): boolean {
   return typeof window !== "undefined" && Boolean(window.localStorage);
@@ -46,6 +47,26 @@ export function loadSavedSearches(): SavedSearch[] {
   }
 }
 
+export function hasStoredSavedSearches(): boolean {
+  if (!hasBrowserStorage()) {
+    return false;
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(SAVED_SEARCHES_STORAGE_KEY);
+
+    if (storedValue === null) {
+      return false;
+    }
+
+    const parsedValue: unknown = JSON.parse(storedValue);
+
+    return parseSavedSearches(parsedValue) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
 export function saveSavedSearches(searches: SavedSearch[]): void {
   if (!hasBrowserStorage()) {
     return;
@@ -55,6 +76,10 @@ export function saveSavedSearches(searches: SavedSearch[]): void {
     SAVED_SEARCHES_STORAGE_KEY,
     JSON.stringify(createPersistedEnvelope(searches)),
   );
+
+  if (typeof window.dispatchEvent === "function") {
+    window.dispatchEvent(new CustomEvent(SAVED_SEARCHES_CHANGED_EVENT));
+  }
 }
 
 export function createSavedSearch(

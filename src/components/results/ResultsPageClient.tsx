@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent, JSX, MouseEvent } from "react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BestRecommendationCard } from "@/components/results/BestRecommendationCard";
 import { CashBenchmarkCard } from "@/components/results/CashBenchmarkCard";
 import {
@@ -34,8 +34,7 @@ import {
 import { selectResultsSearch } from "@/lib/results/searchSelection";
 import { getTransferPathDisplays } from "@/lib/results/transferPaths";
 import { scoreAwardOptions } from "@/lib/scoring/recommendations";
-import { loadActiveSearch, saveActiveSearch } from "@/lib/search/activeSearch";
-import { loadSavedSearches, saveSavedSearches } from "@/lib/search/storage";
+import { useSearchData } from "@/lib/search/useSearchData";
 import {
   hasSearchValidationErrors,
   type SearchValidationErrors,
@@ -75,26 +74,6 @@ const fallbackSavedSearch: SavedSearch = {
   createdAt: "2026-06-06T00:00:00.000Z",
   updatedAt: "2026-06-06T00:00:00.000Z",
 };
-
-function subscribeToHydration(onStoreChange: () => void): () => void {
-  if (typeof window === "undefined") {
-    return () => undefined;
-  }
-
-  const timeoutId = window.setTimeout(onStoreChange, 0);
-
-  return () => {
-    window.clearTimeout(timeoutId);
-  };
-}
-
-function getClientHydrationSnapshot(): boolean {
-  return true;
-}
-
-function getServerHydrationSnapshot(): boolean {
-  return false;
-}
 
 function normalizeSingleCode(value: string): string[] {
   const normalizedValue = value.trim().toUpperCase();
@@ -222,30 +201,26 @@ function clearErrorsForField(
 
 export function ResultsPageClient(): JSX.Element {
   const wallet = useWalletAccounts({ seedLocalAccounts: true });
-  const isLoaded = useSyncExternalStore(
-    subscribeToHydration,
-    getClientHydrationSnapshot,
-    getServerHydrationSnapshot,
-  );
+  const searchData = useSearchData();
   const accounts = wallet.accounts;
-  const [savedSearchVersion, setSavedSearchVersion] = useState(0);
-  const savedSearches = useMemo(() => {
-    void savedSearchVersion;
-
-    return isLoaded ? loadSavedSearches() : [];
-  }, [isLoaded, savedSearchVersion]);
-  const activeSearch = useMemo(
-    () => (isLoaded ? loadActiveSearch() : undefined),
-    [isLoaded],
-  );
+  const savedSearches = searchData.savedSearches;
+  const activeSearch = searchData.activeSearch ?? undefined;
   const baseSelectedSearch = useMemo(
     () =>
       selectResultsSearch(activeSearch, savedSearches, fallbackSavedSearch),
     [activeSearch, savedSearches],
   );
+  const selectedSearchBaseKey = [
+    searchData.source,
+    baseSelectedSearch.id,
+    baseSelectedSearch.updatedAt,
+  ].join(":");
   const [selectedSearchOverride, setSelectedSearchOverride] =
-    useState<SavedSearch>();
-  const selectedSearch = selectedSearchOverride ?? baseSelectedSearch;
+    useState<{ baseKey: string; search: SavedSearch }>();
+  const selectedSearch =
+    selectedSearchOverride?.baseKey === selectedSearchBaseKey
+      ? selectedSearchOverride.search
+      : baseSelectedSearch;
   const [filters, setFilters] =
     useState<ResultsFiltersState>(defaultFilters);
   const [saveStatus, setSaveStatus] = useState("");
@@ -266,6 +241,10 @@ export function ResultsPageClient(): JSX.Element {
   const modalTriggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
+    if (searchData.isLoading) {
+      return;
+    }
+
     let isCurrent = true;
 
     searchFlightsWithProviders(selectedSearch, mockFlightSearchProviderSet)
@@ -290,7 +269,7 @@ export function ResultsPageClient(): JSX.Element {
     return () => {
       isCurrent = false;
     };
-  }, [selectedSearch]);
+  }, [searchData.isLoading, selectedSearch]);
 
   const flightSearchResults =
     flightSearchState?.searchId === selectedSearch.id
@@ -384,22 +363,32 @@ export function ResultsPageClient(): JSX.Element {
     }, 0);
   }
 
-  function handleSaveSearch(): void {
+  async function handleSaveSearch(): Promise<void> {
     const nextSearch: SavedSearch = {
       ...selectedSearch,
       updatedAt: new Date().toISOString(),
     };
-    const currentSavedSearches = isLoaded ? loadSavedSearches() : savedSearches;
     const nextSavedSearches = [
       nextSearch,
-      ...currentSavedSearches.filter(
+      ...savedSearches.filter(
         (savedSearch) => !isDuplicateSearch(savedSearch, nextSearch),
       ),
     ];
 
-    saveSavedSearches(nextSavedSearches);
-    setSavedSearchVersion((currentVersion) => currentVersion + 1);
-    setSaveStatus(`Saved "${nextSearch.name}" locally.`);
+    try {
+      await searchData.saveSavedSearches(nextSavedSearches);
+      setSaveStatus(
+        searchData.source === "cloud"
+          ? `Saved "${nextSearch.name}" to cloud.`
+          : `Saved "${nextSearch.name}" locally.`,
+      );
+    } catch {
+      setSaveStatus(
+        searchData.source === "cloud"
+          ? "Cloud saved search could not be saved."
+          : "Saved search could not be saved.",
+      );
+    }
   }
 
   function handleOpenEdit(event: MouseEvent<HTMLButtonElement>): void {
@@ -439,7 +428,9 @@ export function ResultsPageClient(): JSX.Element {
     setEditErrors((currentErrors) => clearErrorsForField(currentErrors, field));
   }
 
-  function handleEditSubmit(event: FormEvent<HTMLFormElement>): void {
+  async function handleEditSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> {
     event.preventDefault();
 
     const originCodes = normalizeSingleCode(editFormState.origin);
@@ -489,13 +480,28 @@ export function ResultsPageClient(): JSX.Element {
       updatedAt: new Date().toISOString(),
     };
 
-    saveActiveSearch(updatedSearch);
-    setSelectedSearchOverride(updatedSearch);
-    setEditFormState(createEditFormState(updatedSearch));
-    setEditErrors({});
-    setIsEditOpen(false);
-    restoreModalTriggerFocus();
-    setSaveStatus("Active search updated.");
+    try {
+      await searchData.saveActiveSearch(updatedSearch);
+      setSelectedSearchOverride({
+        baseKey: selectedSearchBaseKey,
+        search: updatedSearch,
+      });
+      setEditFormState(createEditFormState(updatedSearch));
+      setEditErrors({});
+      setIsEditOpen(false);
+      restoreModalTriggerFocus();
+      setSaveStatus(
+        searchData.source === "cloud"
+          ? "Cloud active search updated."
+          : "Active search updated.",
+      );
+    } catch {
+      setSaveStatus(
+        searchData.source === "cloud"
+          ? "Cloud active search could not be saved."
+          : "Active search could not be saved.",
+      );
+    }
   }
 
   function handleChangeFilter(
@@ -508,19 +514,22 @@ export function ResultsPageClient(): JSX.Element {
     }));
   }
 
-  if (wallet.isLoading) {
+  if (wallet.isLoading || searchData.isLoading) {
     return (
       <div className="rounded-lg border border-[#d9e2d6] bg-white p-6">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
           Results
         </p>
         <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[#14211b]">
-          Loading wallet balances
+          Loading trip data
         </h2>
         <p className="mt-2 text-sm leading-6 text-[#637268]">
           Recommendations are waiting for the{" "}
-          {wallet.source === "cloud" ? "cloud wallet" : "browser wallet"} so
-          scoring does not use stale balances.
+          {wallet.source === "cloud" ? "cloud wallet" : "browser wallet"} and{" "}
+          {searchData.source === "cloud"
+            ? "cloud search data"
+            : "browser search data"}{" "}
+          so scoring does not use stale inputs.
         </p>
       </div>
     );
@@ -582,6 +591,19 @@ export function ResultsPageClient(): JSX.Element {
           <p className="font-semibold text-[#14211b]">Wallet warning</p>
           <p className="mt-1">
             {wallet.error} Results are continuing with an empty wallet.
+          </p>
+        </section>
+      ) : null}
+
+      {searchData.error ? (
+        <section
+          className="rounded-lg border border-[#ead99d] bg-[#fff9df] p-5 text-sm leading-6 text-[#5d4c1d]"
+          role="alert"
+        >
+          <p className="font-semibold text-[#14211b]">Search warning</p>
+          <p className="mt-1">
+            {searchData.error} Results are continuing with the safe fallback
+            search if cloud data is unavailable.
           </p>
         </section>
       ) : null}
