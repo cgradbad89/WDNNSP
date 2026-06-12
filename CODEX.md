@@ -153,6 +153,7 @@ Current Firebase/Auth status:
 - Firestore writes are limited to the Firebase client SDK and are scoped under `users/{uid}`.
 - Signing in creates or updates a minimal `users/{uid}` profile document.
 - Signed-in wallet accounts sync under `users/{uid}/walletAccounts/{accountId}` with an intentional-empty marker at `users/{uid}/walletMeta/current`.
+- Firestore wallet account payloads must omit `undefined` fields; use the wallet serializer before writing account documents.
 - Signed-out wallet accounts remain localStorage-backed, and local wallet import to cloud is explicit/manual.
 - Saved searches, active searches, and results remain localStorage-only until an explicit cloud-sync migration task.
 - Do not print, commit, or stage `.env.local` or any secret/private credentials. Firebase Admin SDK and service accounts are not part of this app.

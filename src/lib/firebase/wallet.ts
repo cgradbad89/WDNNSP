@@ -25,6 +25,17 @@ export interface CloudWalletDocument {
   data: unknown;
 }
 
+export type FirestoreWalletAccountPayload = {
+  id: string;
+  userId: string;
+  programId: string;
+  programName: string;
+  programType: PointsAccount["programType"];
+  balance: number;
+  lastUpdatedAt: string;
+  notes?: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -54,6 +65,21 @@ export function normalizeCloudWalletAccount(
   return {
     ...account,
     userId: uid,
+  };
+}
+
+export function toFirestoreWalletAccount(
+  account: PointsAccount,
+): FirestoreWalletAccountPayload {
+  return {
+    id: account.id,
+    userId: account.userId,
+    programId: account.programId,
+    programName: account.programName,
+    programType: account.programType,
+    balance: account.balance,
+    lastUpdatedAt: account.lastUpdatedAt,
+    ...(account.notes === undefined ? {} : { notes: account.notes }),
   };
 }
 
@@ -186,7 +212,10 @@ export async function saveCloudWalletAccounts(
     });
 
     normalizedAccounts.forEach((account) => {
-      batch.set(doc(walletAccountsRef, account.id), account);
+      batch.set(
+        doc(walletAccountsRef, account.id),
+        toFirestoreWalletAccount(account),
+      );
     });
 
     batch.set(

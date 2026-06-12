@@ -4,6 +4,7 @@ import {
   isCloudWalletMetaInitialized,
   normalizeCloudWalletAccount,
   parseCloudWalletAccountDocuments,
+  toFirestoreWalletAccount,
 } from "@/lib/firebase/wallet";
 import type { PointsAccount } from "@/types/points";
 
@@ -97,5 +98,61 @@ describe("firebase wallet helpers", () => {
         userId: "user-1",
       },
     ]);
+  });
+
+  it("serializes accounts with undefined notes without a notes key", () => {
+    const payload = toFirestoreWalletAccount({
+      ...account,
+      notes: undefined,
+    });
+
+    expect(payload).not.toHaveProperty("notes");
+  });
+
+  it("serializes accounts with a note by preserving the notes field", () => {
+    expect(
+      toFirestoreWalletAccount({
+        ...account,
+        notes: "Keep this note",
+      }),
+    ).toEqual({
+      ...account,
+      notes: "Keep this note",
+    });
+  });
+
+  it("preserves empty string notes as a real optional value", () => {
+    expect(
+      toFirestoreWalletAccount({
+        ...account,
+        notes: "",
+      }),
+    ).toHaveProperty("notes", "");
+  });
+
+  it("keeps required account fields in the Firestore payload", () => {
+    expect(toFirestoreWalletAccount(account)).toMatchObject({
+      id: account.id,
+      userId: account.userId,
+      programId: account.programId,
+      programName: account.programName,
+      programType: account.programType,
+      balance: account.balance,
+      lastUpdatedAt: account.lastUpdatedAt,
+    });
+  });
+
+  it("builds an imported cloud wallet payload without undefined fields", () => {
+    const importedAccount = normalizeCloudWalletAccount("user-1", {
+      ...account,
+      notes: undefined,
+    });
+    const payload = toFirestoreWalletAccount(importedAccount);
+
+    expect(payload).toEqual({
+      ...account,
+      userId: "user-1",
+    });
+    expect(Object.values(payload)).not.toContain(undefined);
   });
 });
