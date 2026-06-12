@@ -98,6 +98,13 @@ MVP options:
 
 Authentication should be implemented cleanly, but permissions can remain simple.
 
+Current implementation:
+
+- Firebase client initialization reads only `NEXT_PUBLIC_FIREBASE_*` web app configuration.
+- Google sign-in and email/password sign-in/account creation are supported in the shared app header.
+- Signing in creates or updates a minimal Firestore `users/{uid}` profile document.
+- Wallet, saved-search, active-search, and results data still use browser localStorage only; cloud sync is future work.
+
 ---
 
 #### 5.2 Points Wallet
@@ -562,6 +569,21 @@ Data should include:
 
 ## 8. Core Data Model
 
+### 8.0 UserProfile
+
+Stored at `users/{uid}` after Firebase sign-in.
+
+```ts
+type UserProfile = {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+};
+```
+
 ### 8.1 Cabin
 
 ```ts
@@ -737,6 +759,7 @@ src/
     results/
     settings/
   components/
+    auth/
     layout/
     wallet/
     search/
@@ -806,11 +829,11 @@ Exit criteria:
 - Dashboard summarizes points balances.
 - App shows transfer options for flexible currencies.
 
-Current implementation status as of June 6, 2026:
+Current implementation status as of June 11, 2026:
 
-- Completed: app shell, navigation, dashboard route, wallet route, core TypeScript domain types, static points program data, static transfer partner data, airport group data, points total helpers, transfer partner lookup helpers, airport group expansion helpers, browser-persistent localStorage wallet add/edit/delete CRUD, and dashboard summaries based on the browser wallet.
-- Covered by unit tests: points balance totals, flexible and airline account filtering, transfer partner lookup, wallet-based transfer option deduping, airport group expansion, and browser wallet storage CRUD helpers.
-- Remaining: authentication, Firebase persistence, production user-specific balances, cross-tab wallet sync, and live provider integrations.
+- Completed: app shell, navigation, dashboard route, wallet route, Firebase client initialization from public web config, Firebase Auth provider/context, Google sign-in, email/password sign-in and account creation, minimal Firestore `users/{uid}` profile writes after sign-in, core TypeScript domain types, static points program data, static transfer partner data, airport group data, points total helpers, transfer partner lookup helpers, airport group expansion helpers, browser-persistent localStorage wallet add/edit/delete CRUD, and dashboard summaries based on the browser wallet.
+- Covered by unit tests: Firebase public-env config validation, app-safe auth user mapping, Firestore user-profile payload construction, points balance totals, flexible and airline account filtering, transfer partner lookup, wallet-based transfer option deduping, airport group expansion, and browser wallet storage CRUD helpers.
+- Remaining: wallet cloud sync, saved-search cloud sync, active-search cloud sync, production user-specific balances beyond the auth profile, cross-tab wallet sync, and live provider integrations.
 
 ---
 
@@ -837,7 +860,7 @@ Current implementation status as of June 10, 2026:
 
 - Completed: approved design prototype route, revised run-search-first design reference, airport autocomplete design reference on `/design/search`, curated static airport data, production airport autocomplete on `/search` and the `/results` edit-search drawer, browser-persistent saved-search localStorage helpers, browser-persistent active-search localStorage helpers, trip search validation helpers, real `/search` trip search form, active-search creation on submit, `/results` navigation after valid search, airport group expansion during validation, inline validation errors, unsupported legacy saved-search blocking on `/search`, supported-only saved-search fallback on `/results`, result-page save-search action, and compact dashboard saved-search summary.
 - Covered by unit tests: saved-search and active-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, required search fields, supported airport and group validation, saved-search support-status validation, unsupported airport rejection, unsupported saved-search fallback skipping, autocomplete ranking and limits, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, active-search selection priority, and non-negative max stops/flexible days.
-- Remaining: alerts, Firebase persistence, authenticated user ownership, expanded airport coverage, and live provider integrations.
+- Remaining: alerts, saved-search cloud sync, authenticated search ownership beyond localStorage, expanded airport coverage, and live provider integrations.
 
 ---
 
@@ -1037,6 +1060,8 @@ Stored data should be limited to:
 - Saved searches
 - Search results
 - Recommendation history, optional
+
+Current Firestore writes are limited to the minimal signed-in user profile at `users/{uid}`. Manual wallet balances, saved searches, active searches, search results, and recommendation history are not written to Firestore yet.
 
 ---
 

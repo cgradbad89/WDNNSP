@@ -146,6 +146,14 @@ Use:
 
 If Firebase is not configured yet, create clean abstraction layers and TODOs rather than blocking the task.
 
+Current Firebase/Auth status:
+
+- Client Firebase SDK is initialized lazily from `NEXT_PUBLIC_FIREBASE_*` web app configuration only.
+- Firebase Auth supports Google and email/password from the shared header auth shell.
+- Firestore writes are limited to a minimal `users/{uid}` profile document after sign-in.
+- Wallet accounts, saved searches, active searches, and results remain localStorage-only until an explicit cloud-sync migration task.
+- Do not print, commit, or stage `.env.local` or any secret/private credentials. Firebase Admin SDK and service accounts are not part of this app.
+
 ## Architecture Principles
 
 Keep business logic out of React components.
