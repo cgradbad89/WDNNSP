@@ -277,6 +277,10 @@ MVP approach:
 - If live API is not ready, support mock data or manually entered cash prices.
 - Keep the cash flight data model separate from award flight data.
 - Do not let cash API setup block Phase 1 or Phase 2.
+- Provider calls should return typed result envelopes with provider status,
+  metadata, and messages so future live providers can represent no-results,
+  unsupported-route, rate-limit, error, and stale-data outcomes without changing
+  the results UI contract.
 
 Potential future provider: Duffel. Duffel documents flight search through offer requests, where an offer request describes passengers and itinerary slices and returns flight offers from airlines. This is a good fit for a future cash benchmark provider, but live provider integration is not part of Phase 1.
 
@@ -311,6 +315,9 @@ MVP preferred approach:
 - Use a dedicated award availability source such as Seats.aero if API access is available.
 - If no award API is available at first, support mock/manual award data so the app logic can still be built and tested.
 - Do not let award API setup block the wallet, search form, scoring, or mock-result experience.
+- Provider calls should return typed result envelopes with provider status,
+  freshness metadata, and user-safe messages. The current implementation still
+  uses mock award data only; live provider integration remains deferred.
 
 Seats.aero is a candidate because its developer documentation describes APIs for award travel data and a bulk availability endpoint for retrieving availability by mileage program, cabin, and date range. Actual API access, limits, cost, and coverage need to be confirmed separately before integration.
 
@@ -551,6 +558,10 @@ Potential providers:
 
 The app should abstract the provider behind a service layer so the provider can be swapped later.
 
+Current provider interfaces return `ProviderResultEnvelope<CashFlightOption>`
+instead of raw arrays. The envelope carries `status`, `data`, provider
+metadata, and messages while the app remains mock-backed.
+
 ---
 
 ### 7.4 Award availability data
@@ -564,6 +575,11 @@ Potential provider:
 The app should also support manual/mock award data during development.
 
 The app must not rely on airline scraping for MVP.
+
+Current provider interfaces return `ProviderResultEnvelope<AwardFlightOption>`
+instead of raw arrays. The envelope prepares the app for future live-provider
+loading, error, no-results, unsupported-route, rate-limit, and stale-data
+states, but no Seats.aero or other live award provider is implemented yet.
 
 ---
 
@@ -711,16 +727,56 @@ type SearchMeta = {
 ### 8.5 SearchResultSet
 
 ```ts
+type ProviderStatus =
+  | "success"
+  | "partial"
+  | "no_results"
+  | "unsupported_route"
+  | "rate_limited"
+  | "error"
+  | "stale";
+
+type ProviderResultEnvelope<T> = {
+  status: ProviderStatus;
+  data: T[];
+  metadata: {
+    providerId: string;
+    providerLabel: string;
+    searchedAt: string;
+    expiresAt?: string;
+    isLive: boolean;
+    isStale?: boolean;
+  };
+  messages: {
+    code: string;
+    severity: "info" | "warning" | "error";
+    message: string;
+  }[];
+};
+
+type FlightSearchEnvelope = {
+  cash: ProviderResultEnvelope<CashFlightOption>;
+  awards: ProviderResultEnvelope<AwardFlightOption>;
+  overallStatus: ProviderStatus;
+  messages: ProviderResultEnvelope<unknown>["messages"];
+};
+
 type SearchResultSet = {
   id: string;
   userId: string;
   searchId: string;
-  cashOptions: CashFlightOption[];
-  awardOptions: AwardFlightOption[];
+  cash: ProviderResultEnvelope<CashFlightOption>;
+  awards: ProviderResultEnvelope<AwardFlightOption>;
+  overallStatus: ProviderStatus;
+  messages: ProviderResultEnvelope<unknown>["messages"];
   recommendations: RecommendationScore[];
   createdAt: string;
 };
 ```
+
+Search results are still generated from mock providers at runtime and are not
+written to Firestore. Future persistence should preserve provider envelope
+metadata/messages without storing secrets or provider credentials.
 
 ---
 
@@ -867,7 +923,8 @@ Initial route inventory:
 - `/results` reads active search first, then saved searches, then the Tokyo fallback from the active local-or-cloud search source; it includes an edit-search drawer that reuses curated airport autocomplete and supported-code validation for active-search edits
 - `/design/search` keeps the design-only run-search-first prototype as a reference, including airport autocomplete mock states
 - `/design/results` keeps the design-only results, edit-search, route-detail, and save-search prototype as a reference
-- `/results` shows deterministic mock cash and award results ranked by the initial recommendation engine
+- `/results` shows deterministic mock cash and award results from provider
+  envelopes, ranked by the initial recommendation engine
 - `/settings` shows the settings placeholder
 
 ---
@@ -944,11 +1001,19 @@ Exit criteria:
 - App can show cash benchmark options for a route.
 - App can use cash price in value calculations.
 
-Current implementation status as of June 6, 2026:
+Current implementation status as of June 12, 2026:
 
-- Completed: cash flight provider interface, mock cash provider, deterministic mock cash benchmark generation for the real `/results` route, driven by the active search, first saved search, or a Tokyo Spring Trip fallback, with mock route detail data for cash benchmark cards.
-- Covered by unit tests: mock cash provider output, cash benchmark use in cents-per-point calculations through the scoring helpers, active-search selection priority, and route-detail duration/summary formatting.
-- Remaining: multiple cash options, manual cash entry, Duffel/Amadeus-style live provider integration, and production freshness metadata.
+- Completed: cash flight provider interface returning typed provider envelopes,
+  mock cash provider envelope metadata/messages, deterministic mock cash
+  benchmark generation for the real `/results` route, driven by the active
+  search, first saved search, or a Tokyo Spring Trip fallback, with mock route
+  detail data for cash benchmark cards.
+- Covered by unit tests: mock cash provider envelope output, provider status
+  combination, provider-exception envelope handling, cash benchmark use in
+  cents-per-point calculations through the scoring helpers, active-search
+  selection priority, and route-detail duration/summary formatting.
+- Remaining: multiple cash options, manual cash entry, Duffel/Amadeus-style
+  live provider integration, and production freshness UI/weighting.
 
 ---
 
@@ -968,11 +1033,20 @@ Exit criteria:
 - App can show award options.
 - App can tell whether the user can book using existing or transferable points.
 
-Current implementation status as of June 6, 2026:
+Current implementation status as of June 12, 2026:
 
-- Completed: award flight provider interface, mock award provider, deterministic mock award options for the real `/results` route, including Tokyo-like Air Canada Aeroplan, Virgin Atlantic Flying Club, and United MileagePlus examples, generic route fallback options, route detail data, transfer-required display details, and mock result filters.
-- Covered by unit tests: mock award provider output, award option scoring against wallet balances and transfer partners, transfer-path display derivation, and mock result filter behavior.
-- Remaining: manual award entry, real award availability providers, production freshness handling, and authenticated persistence.
+- Completed: award flight provider interface returning typed provider envelopes,
+  mock award provider envelope metadata/messages, deterministic mock award
+  options for the real `/results` route, including Tokyo-like Air Canada
+  Aeroplan, Virgin Atlantic Flying Club, and United MileagePlus examples,
+  generic route fallback options, route detail data, transfer-required display
+  details, and mock result filters.
+- Covered by unit tests: mock award provider envelope output, provider status
+  combination, provider-exception envelope handling, award option scoring
+  against wallet balances and transfer partners, transfer-path display
+  derivation, and mock result filter behavior.
+- Remaining: manual award entry, real award availability providers, production
+  freshness UI/weighting, and authenticated result persistence.
 
 ---
 

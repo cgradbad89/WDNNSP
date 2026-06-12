@@ -23,10 +23,8 @@ import { AIRPORT_GROUPS } from "@/data/airportGroups";
 import { TRANSFER_PARTNERS } from "@/data/transferPartners";
 import { expandAirportCode } from "@/lib/airports/groups";
 import { mockFlightSearchProviderSet } from "@/lib/providers/mock";
-import {
-  searchFlightsWithProviders,
-  type FlightSearchResults,
-} from "@/lib/providers/search";
+import { searchFlightsWithProviders } from "@/lib/providers/search";
+import type { FlightSearchEnvelope } from "@/lib/providers/types";
 import {
   applyResultsFilters,
   type ResultsFilters as ResultsFiltersState,
@@ -231,7 +229,7 @@ export function ResultsPageClient(): JSX.Element {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [routeModal, setRouteModal] = useState<RouteDetailsDrawerState>();
   const [flightSearchState, setFlightSearchState] = useState<{
-    results: FlightSearchResults;
+    results: FlightSearchEnvelope;
     searchId: string;
   }>();
   const [providerError, setProviderError] = useState<{
@@ -277,9 +275,10 @@ export function ResultsPageClient(): JSX.Element {
       : undefined;
   const currentProviderError =
     providerError?.searchId === selectedSearch.id ? providerError.message : "";
-  const cashOptions = flightSearchResults?.cashOptions ?? EMPTY_CASH_OPTIONS;
+  const cashOptions = flightSearchResults?.cash.data ?? EMPTY_CASH_OPTIONS;
   const cashOption = cashOptions[0];
-  const awardOptions = flightSearchResults?.awardOptions ?? EMPTY_AWARD_OPTIONS;
+  const awardOptions =
+    flightSearchResults?.awards.data ?? EMPTY_AWARD_OPTIONS;
   const recommendationResults = useMemo(
     () =>
       scoreAwardOptions(

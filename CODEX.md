@@ -181,6 +181,12 @@ Use mock providers before live providers.
 
 Do not call third-party flight, cash fare, or award availability APIs directly from React components.
 
+Provider interfaces return typed result envelopes, not raw option arrays. Each
+envelope must carry `status`, `data`, provider metadata, and user-safe messages
+so the app can handle success, partial, no-results, unsupported-route,
+rate-limit, error, and stale-data states without coupling the UI to a specific
+provider.
+
 ## Suggested Architecture Quick Reference
 
 ```txt
@@ -253,14 +259,18 @@ Live providers should be added behind interfaces only.
 
 Do not assume cached award availability is bookable. Preserve freshness/confidence fields.
 
+Provider metadata and messages must never contain API keys, bearer tokens,
+request secrets, raw provider credentials, or private environment values.
+
 ## Provider Integration Rules
 
 Provider integrations should follow this pattern:
 
-1. Define a provider interface.
-2. Implement a mock provider.
-3. Build UI and scoring against normalized internal types.
-4. Add a live provider later without changing UI contracts.
+1. Define a provider interface that returns a `ProviderResultEnvelope<T>`.
+2. Implement a mock provider that marks `metadata.isLive` as `false`.
+3. Build UI and scoring against normalized internal `envelope.data` types.
+4. Preserve provider status, metadata, and messages for future UI readiness.
+5. Add a live provider later without changing UI contracts.
 
 Do not hardcode Duffel, Amadeus, Seats.aero, or any airline-specific API shape into UI components.
 

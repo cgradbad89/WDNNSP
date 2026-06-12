@@ -41,24 +41,58 @@ describe("mock flight providers", () => {
     expect(mockFlightSearchProviderSet.awardProvider.id).toBe("mock-awards");
   });
 
-  it("wraps the existing deterministic cash benchmark", async () => {
-    const cashOptions = await mockCashFlightProvider.searchCashFlights(search);
+  it("returns a cash provider envelope with metadata and messages", async () => {
+    const envelope = await mockCashFlightProvider.searchCashFlights(search);
 
-    expect(cashOptions).toEqual([getMockCashOptionForSearch(search)]);
-    expect(getMockCashFlightsForSearch(search)).toEqual(cashOptions);
+    expect(envelope.status).toBe("success");
+    expect(envelope.data).toEqual([getMockCashOptionForSearch(search)]);
+    expect(getMockCashFlightsForSearch(search)).toEqual(envelope.data);
+    expect(envelope.metadata).toEqual({
+      providerId: "mock-cash",
+      providerLabel: "Mock cash flight provider",
+      searchedAt: expect.any(String),
+      isLive: false,
+    });
+    expect(envelope.messages).toEqual([
+      {
+        code: "mock_data",
+        severity: "info",
+        message: "Using mock flight data.",
+      },
+    ]);
   });
 
-  it("wraps the existing deterministic award options", async () => {
-    const awardOptions =
+  it("returns an award provider envelope with metadata and messages", async () => {
+    const envelope =
       await mockAwardFlightProvider.searchAwardFlights(search);
 
-    expect(awardOptions).toEqual(getMockAwardOptionsForSearch(search));
-    expect(getMockAwardFlightsForSearch(search)).toEqual(awardOptions);
+    expect(envelope.status).toBe("success");
+    expect(envelope.data).toEqual(getMockAwardOptionsForSearch(search));
+    expect(getMockAwardFlightsForSearch(search)).toEqual(envelope.data);
+    expect(envelope.metadata).toEqual({
+      providerId: "mock-awards",
+      providerLabel: "Mock award flight provider",
+      searchedAt: expect.any(String),
+      isLive: false,
+    });
+    expect(envelope.messages).toEqual([
+      {
+        code: "mock_data",
+        severity: "info",
+        message: "Using mock flight data.",
+      },
+      {
+        code: "verify_award_availability",
+        severity: "warning",
+        message: "Verify award availability directly before transferring points.",
+      },
+    ]);
   });
 
   it("keeps nonstop mock cash route details free of layovers", async () => {
-    const [cashOption] =
+    const envelope =
       await mockCashFlightProvider.searchCashFlights(nonstopSearch);
+    const [cashOption] = envelope.data;
 
     expect(cashOption.stops).toBe(0);
     expect(cashOption.routeDetail?.layovers).toEqual([]);
@@ -66,12 +100,12 @@ describe("mock flight providers", () => {
   });
 
   it("keeps nonstop mock award route details free of layovers", async () => {
-    const awardOptions =
+    const envelope =
       await mockAwardFlightProvider.searchAwardFlights(nonstopSearch);
 
-    expect(awardOptions).not.toHaveLength(0);
+    expect(envelope.data).not.toHaveLength(0);
     expect(
-      awardOptions.every(
+      envelope.data.every(
         (option) =>
           option.stops === 0 &&
           option.routeDetail?.layovers.length === 0 &&
@@ -81,13 +115,13 @@ describe("mock flight providers", () => {
   });
 
   it("keeps one-stop mock route details aligned with stop counts", async () => {
-    const awardOptions = await mockAwardFlightProvider.searchAwardFlights(search);
+    const envelope = await mockAwardFlightProvider.searchAwardFlights(search);
 
     expect(
-      awardOptions.every(
+      envelope.data.every(
         (option) => option.routeDetail?.layovers.length === option.stops,
       ),
     ).toBe(true);
-    expect(awardOptions.some((option) => option.stops === 1)).toBe(true);
+    expect(envelope.data.some((option) => option.stops === 1)).toBe(true);
   });
 });

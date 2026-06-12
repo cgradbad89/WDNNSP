@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { searchFlightsWithProviders } from "@/lib/providers/search";
-import type { FlightSearchProviderSet } from "@/lib/providers/types";
+import type {
+  FlightSearchProviderSet,
+  ProviderResultEnvelope,
+  ProviderStatus,
+} from "@/lib/providers/types";
 import type { AwardFlightOption } from "@/types/awards";
 import type { CashFlightOption } from "@/types/flights";
 import type { SavedSearch } from "@/types/search";
@@ -54,20 +58,70 @@ const awardOption: AwardFlightOption = {
   confidence: "high",
 };
 
+function createEnvelope<T>({
+  data,
+  providerId,
+  providerLabel,
+  status,
+}: {
+  data: T[];
+  providerId: string;
+  providerLabel: string;
+  status: ProviderStatus;
+}): ProviderResultEnvelope<T> {
+  return {
+    status,
+    data,
+    metadata: {
+      providerId,
+      providerLabel,
+      searchedAt: "2026-06-12T00:00:00.000Z",
+      isLive: false,
+    },
+    messages: [
+      {
+        code: `${providerId}_${status}`,
+        severity: status === "error" ? "error" : "info",
+        message: `${providerLabel} returned ${status}.`,
+      },
+    ],
+  };
+}
+
+function createProviders({
+  awardEnvelope = createEnvelope({
+    data: [awardOption],
+    providerId: "award",
+    providerLabel: "Award",
+    status: "success",
+  }),
+  cashEnvelope = createEnvelope({
+    data: [cashOption],
+    providerId: "cash",
+    providerLabel: "Cash",
+    status: "success",
+  }),
+}: {
+  awardEnvelope?: ProviderResultEnvelope<AwardFlightOption>;
+  cashEnvelope?: ProviderResultEnvelope<CashFlightOption>;
+} = {}): FlightSearchProviderSet {
+  return {
+    cashProvider: {
+      id: "cash",
+      label: "Cash",
+      searchCashFlights: vi.fn().mockResolvedValue(cashEnvelope),
+    },
+    awardProvider: {
+      id: "award",
+      label: "Award",
+      searchAwardFlights: vi.fn().mockResolvedValue(awardEnvelope),
+    },
+  };
+}
+
 describe("searchFlightsWithProviders", () => {
   it("calls cash and award providers with the search", async () => {
-    const providers: FlightSearchProviderSet = {
-      cashProvider: {
-        id: "cash",
-        label: "Cash",
-        searchCashFlights: vi.fn().mockResolvedValue([cashOption]),
-      },
-      awardProvider: {
-        id: "award",
-        label: "Award",
-        searchAwardFlights: vi.fn().mockResolvedValue([awardOption]),
-      },
-    };
+    const providers = createProviders();
 
     await searchFlightsWithProviders(search, providers);
 
@@ -75,51 +129,188 @@ describe("searchFlightsWithProviders", () => {
     expect(providers.awardProvider.searchAwardFlights).toHaveBeenCalledWith(search);
   });
 
-  it("returns cash and award option arrays", async () => {
-    const providers: FlightSearchProviderSet = {
-      cashProvider: {
-        id: "cash",
-        label: "Cash",
-        async searchCashFlights() {
-          return [cashOption];
-        },
-      },
-      awardProvider: {
-        id: "award",
-        label: "Award",
-        async searchAwardFlights() {
-          return [awardOption];
-        },
-      },
-    };
+  it("returns a combined flight search envelope", async () => {
+    const providers = createProviders();
 
     await expect(searchFlightsWithProviders(search, providers)).resolves.toEqual({
-      cashOptions: [cashOption],
-      awardOptions: [awardOption],
+      cash: expect.objectContaining({
+        status: "success",
+        data: [cashOption],
+      }),
+      awards: expect.objectContaining({
+        status: "success",
+        data: [awardOption],
+      }),
+      overallStatus: "success",
+      messages: [
+        {
+          code: "cash_success",
+          severity: "info",
+          message: "Cash returned success.",
+        },
+        {
+          code: "award_success",
+          severity: "info",
+          message: "Award returned success.",
+        },
+      ],
     });
   });
 
-  it("bubbles provider errors", async () => {
-    const providerError = new Error("Provider failed");
+  it("returns partial when cash succeeds and awards have no results", async () => {
+    const providers = createProviders({
+      awardEnvelope: createEnvelope({
+        data: [],
+        providerId: "award",
+        providerLabel: "Award",
+        status: "no_results",
+      }),
+    });
+
+    await expect(searchFlightsWithProviders(search, providers)).resolves.toMatchObject({
+      overallStatus: "partial",
+      cash: {
+        status: "success",
+        data: [cashOption],
+      },
+      awards: {
+        status: "no_results",
+        data: [],
+      },
+    });
+  });
+
+  it("returns no_results when both providers have no results", async () => {
+    const providers = createProviders({
+      cashEnvelope: createEnvelope({
+        data: [],
+        providerId: "cash",
+        providerLabel: "Cash",
+        status: "no_results",
+      }),
+      awardEnvelope: createEnvelope({
+        data: [],
+        providerId: "award",
+        providerLabel: "Award",
+        status: "no_results",
+      }),
+    });
+
+    await expect(searchFlightsWithProviders(search, providers)).resolves.toHaveProperty(
+      "overallStatus",
+      "no_results",
+    );
+  });
+
+  it("returns error when both providers return error envelopes", async () => {
+    const providers = createProviders({
+      cashEnvelope: createEnvelope({
+        data: [],
+        providerId: "cash",
+        providerLabel: "Cash",
+        status: "error",
+      }),
+      awardEnvelope: createEnvelope({
+        data: [],
+        providerId: "award",
+        providerLabel: "Award",
+        status: "error",
+      }),
+    });
+
+    await expect(searchFlightsWithProviders(search, providers)).resolves.toHaveProperty(
+      "overallStatus",
+      "error",
+    );
+  });
+
+  it("returns unsupported_route when both providers return unsupported_route", async () => {
+    const providers = createProviders({
+      cashEnvelope: createEnvelope({
+        data: [],
+        providerId: "cash",
+        providerLabel: "Cash",
+        status: "unsupported_route",
+      }),
+      awardEnvelope: createEnvelope({
+        data: [],
+        providerId: "award",
+        providerLabel: "Award",
+        status: "unsupported_route",
+      }),
+    });
+
+    await expect(searchFlightsWithProviders(search, providers)).resolves.toHaveProperty(
+      "overallStatus",
+      "unsupported_route",
+    );
+  });
+
+  it("returns rate_limited when both providers return rate_limited", async () => {
+    const providers = createProviders({
+      cashEnvelope: createEnvelope({
+        data: [],
+        providerId: "cash",
+        providerLabel: "Cash",
+        status: "rate_limited",
+      }),
+      awardEnvelope: createEnvelope({
+        data: [],
+        providerId: "award",
+        providerLabel: "Award",
+        status: "rate_limited",
+      }),
+    });
+
+    await expect(searchFlightsWithProviders(search, providers)).resolves.toHaveProperty(
+      "overallStatus",
+      "rate_limited",
+    );
+  });
+
+  it("converts provider exceptions into error envelopes", async () => {
     const providers: FlightSearchProviderSet = {
       cashProvider: {
         id: "cash",
         label: "Cash",
-        async searchCashFlights() {
-          throw providerError;
-        },
+        searchCashFlights: vi.fn().mockRejectedValue(new Error("Provider failed")),
       },
       awardProvider: {
         id: "award",
         label: "Award",
-        async searchAwardFlights() {
-          return [awardOption];
-        },
+        searchAwardFlights: vi.fn().mockResolvedValue(
+          createEnvelope({
+            data: [awardOption],
+            providerId: "award",
+            providerLabel: "Award",
+            status: "success",
+          }),
+        ),
       },
     };
 
-    await expect(searchFlightsWithProviders(search, providers)).rejects.toThrow(
-      "Provider failed",
-    );
+    await expect(searchFlightsWithProviders(search, providers)).resolves.toMatchObject({
+      cash: {
+        status: "error",
+        data: [],
+        metadata: {
+          providerId: "cash",
+          providerLabel: "Cash",
+          isLive: false,
+        },
+        messages: [
+          {
+            code: "cash_exception",
+            severity: "error",
+            message: "Cash provider failed unexpectedly.",
+          },
+        ],
+      },
+      awards: {
+        status: "success",
+        data: [awardOption],
+      },
+      overallStatus: "partial",
+    });
   });
 });
