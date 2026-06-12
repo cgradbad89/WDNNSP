@@ -20,7 +20,6 @@ import {
 } from "@/components/results/RouteDetailsDrawer";
 import { SearchSummaryStrip } from "@/components/results/SearchSummaryStrip";
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
-import { MOCK_POINTS_ACCOUNTS } from "@/data/mockPointsAccounts";
 import { TRANSFER_PARTNERS } from "@/data/transferPartners";
 import { expandAirportCode } from "@/lib/airports/groups";
 import { mockFlightSearchProviderSet } from "@/lib/providers/mock";
@@ -42,11 +41,7 @@ import {
   type SearchValidationErrors,
   validateSavedSearchInput,
 } from "@/lib/search/validation";
-import {
-  hasStoredWalletAccounts,
-  loadWalletAccounts,
-  WALLET_ACCOUNTS_CHANGED_EVENT,
-} from "@/lib/wallet/storage";
+import { useWalletAccounts } from "@/lib/wallet/useWalletAccounts";
 import type { AwardFlightOption } from "@/types/awards";
 import type { CashFlightOption } from "@/types/flights";
 import type { PointsAccount } from "@/types/points";
@@ -81,19 +76,6 @@ const fallbackSavedSearch: SavedSearch = {
   updatedAt: "2026-06-06T00:00:00.000Z",
 };
 
-function createSeedAccounts(): PointsAccount[] {
-  return MOCK_POINTS_ACCOUNTS.map((account) => ({
-    ...account,
-    userId: LOCAL_USER_ID,
-  }));
-}
-
-function getWalletAccountsSnapshot(): PointsAccount[] {
-  return hasStoredWalletAccounts()
-    ? loadWalletAccounts()
-    : createSeedAccounts();
-}
-
 function subscribeToHydration(onStoreChange: () => void): () => void {
   if (typeof window === "undefined") {
     return () => undefined;
@@ -112,44 +94,6 @@ function getClientHydrationSnapshot(): boolean {
 
 function getServerHydrationSnapshot(): boolean {
   return false;
-}
-
-function subscribeToWalletAccounts(onStoreChange: () => void): () => void {
-  if (typeof window === "undefined") {
-    return () => undefined;
-  }
-
-  window.addEventListener("focus", onStoreChange);
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener(WALLET_ACCOUNTS_CHANGED_EVENT, onStoreChange);
-
-  return () => {
-    window.removeEventListener("focus", onStoreChange);
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener(WALLET_ACCOUNTS_CHANGED_EVENT, onStoreChange);
-  };
-}
-
-function getWalletAccountsClientSnapshot(): string {
-  return JSON.stringify(getWalletAccountsSnapshot());
-}
-
-function getWalletAccountsServerSnapshot(): string {
-  return JSON.stringify(createSeedAccounts());
-}
-
-function parseWalletAccountsSnapshot(snapshot: string): PointsAccount[] {
-  try {
-    const parsedSnapshot: unknown = JSON.parse(snapshot);
-
-    if (Array.isArray(parsedSnapshot)) {
-      return parsedSnapshot as PointsAccount[];
-    }
-  } catch {
-    return createSeedAccounts();
-  }
-
-  return createSeedAccounts();
 }
 
 function normalizeSingleCode(value: string): string[] {
@@ -277,20 +221,13 @@ function clearErrorsForField(
 }
 
 export function ResultsPageClient(): JSX.Element {
+  const wallet = useWalletAccounts({ seedLocalAccounts: true });
   const isLoaded = useSyncExternalStore(
     subscribeToHydration,
     getClientHydrationSnapshot,
     getServerHydrationSnapshot,
   );
-  const walletAccountsSnapshot = useSyncExternalStore(
-    subscribeToWalletAccounts,
-    getWalletAccountsClientSnapshot,
-    getWalletAccountsServerSnapshot,
-  );
-  const accounts = useMemo(
-    () => parseWalletAccountsSnapshot(walletAccountsSnapshot),
-    [walletAccountsSnapshot],
-  );
+  const accounts = wallet.accounts;
   const [savedSearchVersion, setSavedSearchVersion] = useState(0);
   const savedSearches = useMemo(() => {
     void savedSearchVersion;
@@ -571,6 +508,24 @@ export function ResultsPageClient(): JSX.Element {
     }));
   }
 
+  if (wallet.isLoading) {
+    return (
+      <div className="rounded-lg border border-[#d9e2d6] bg-white p-6">
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
+          Results
+        </p>
+        <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[#14211b]">
+          Loading wallet balances
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[#637268]">
+          Recommendations are waiting for the{" "}
+          {wallet.source === "cloud" ? "cloud wallet" : "browser wallet"} so
+          scoring does not use stale balances.
+        </p>
+      </div>
+    );
+  }
+
   if (currentProviderError) {
     return (
       <div className="rounded-lg border border-[#ead99d] bg-[#fff9df] p-6">
@@ -618,6 +573,18 @@ export function ResultsPageClient(): JSX.Element {
         saveStatus={saveStatus}
         search={selectedSearch}
       />
+
+      {wallet.error ? (
+        <section
+          className="rounded-lg border border-[#ead99d] bg-[#fff9df] p-5 text-sm leading-6 text-[#5d4c1d]"
+          role="alert"
+        >
+          <p className="font-semibold text-[#14211b]">Wallet warning</p>
+          <p className="mt-1">
+            {wallet.error} Results are continuing with an empty wallet.
+          </p>
+        </section>
+      ) : null}
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">

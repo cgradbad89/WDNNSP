@@ -103,7 +103,9 @@ Current implementation:
 - Firebase client initialization reads only `NEXT_PUBLIC_FIREBASE_*` web app configuration.
 - Google sign-in and email/password sign-in/account creation are supported in the shared app header.
 - Signing in creates or updates a minimal Firestore `users/{uid}` profile document.
-- Wallet, saved-search, active-search, and results data still use browser localStorage only; cloud sync is future work.
+- Signed-in wallet balances sync to Firestore under the signed-in user. Signed-out wallet balances continue to use browser localStorage.
+- Existing local wallet data is never auto-migrated; signed-in users can explicitly import this device's local wallet into their cloud wallet.
+- Saved-search, active-search, and results data still use browser localStorage only; cloud sync for those records is future work.
 
 ---
 
@@ -151,6 +153,14 @@ Wallet features:
 - Categorize as flexible currency or airline program
 - Show total flexible points
 - Show total airline miles
+
+Wallet persistence:
+
+- Signed-out users read and write the browser localStorage wallet.
+- Signed-in users read and write Firestore wallet documents scoped under `users/{uid}`.
+- Firestore is the source of truth for wallet balances while signed in.
+- Local wallet import to cloud is explicit and user-initiated.
+- Saved searches and active search state are not synced with the wallet in this phase.
 
 ---
 
@@ -620,6 +630,27 @@ type PointsAccount = {
 };
 ```
 
+Firestore wallet storage:
+
+```txt
+users/{uid}/walletAccounts/{accountId}
+```
+
+Each wallet account document stores the existing `PointsAccount` shape, with `userId` normalized to the signed-in `uid`.
+
+```txt
+users/{uid}/walletMeta/current
+```
+
+```ts
+type WalletMeta = {
+  initialized: boolean;
+  updatedAt: Timestamp;
+};
+```
+
+`walletMeta/current.initialized` distinguishes a never-initialized cloud wallet from an intentionally saved empty cloud wallet.
+
 ---
 
 ### 8.4 TripSearch
@@ -796,8 +827,8 @@ src/
 Initial route inventory:
 
 - `/` redirects to `/dashboard`
-- `/dashboard` summarizes browser-persistent wallet totals, transfer opportunities, and required transfer warning
-- `/wallet` supports browser-persistent manual account add/edit/delete with empty-state-ready structure
+- `/dashboard` summarizes local wallet totals when signed out and Firestore wallet totals when signed in, with transfer opportunities and the required transfer warning
+- `/wallet` supports localStorage wallet add/edit/delete when signed out and Firestore wallet add/edit/delete when signed in, with explicit local-to-cloud import
 - `/search` supports browser-persistent saved trip searches with curated airport autocomplete, airport group expansion, supported-code inline validation, run-search, delete actions, and visible unsupported legacy saved-search states
 - `/results` includes an edit-search drawer that reuses curated airport autocomplete and supported-code validation for active-search edits
 - `/design/search` keeps the design-only run-search-first prototype as a reference, including airport autocomplete mock states
@@ -831,9 +862,9 @@ Exit criteria:
 
 Current implementation status as of June 11, 2026:
 
-- Completed: app shell, navigation, dashboard route, wallet route, Firebase client initialization from public web config, Firebase Auth provider/context, Google sign-in, email/password sign-in and account creation, minimal Firestore `users/{uid}` profile writes after sign-in, core TypeScript domain types, static points program data, static transfer partner data, airport group data, points total helpers, transfer partner lookup helpers, airport group expansion helpers, browser-persistent localStorage wallet add/edit/delete CRUD, and dashboard summaries based on the browser wallet.
-- Covered by unit tests: Firebase public-env config validation, app-safe auth user mapping, Firestore user-profile payload construction, points balance totals, flexible and airline account filtering, transfer partner lookup, wallet-based transfer option deduping, airport group expansion, and browser wallet storage CRUD helpers.
-- Remaining: wallet cloud sync, saved-search cloud sync, active-search cloud sync, production user-specific balances beyond the auth profile, cross-tab wallet sync, and live provider integrations.
+- Completed: app shell, navigation, dashboard route, wallet route, Firebase client initialization from public web config, Firebase Auth provider/context, Google sign-in, email/password sign-in and account creation, minimal Firestore `users/{uid}` profile writes after sign-in, Firestore wallet sync for signed-in users, localStorage wallet fallback for signed-out users, explicit local-wallet import to cloud, core TypeScript domain types, static points program data, static transfer partner data, airport group data, points total helpers, transfer partner lookup helpers, airport group expansion helpers, browser-persistent localStorage wallet add/edit/delete CRUD, and dashboard/search/results wallet summaries based on the active local-or-cloud wallet source.
+- Covered by unit tests: Firebase public-env config validation, app-safe auth user mapping, Firestore user-profile payload construction, Firestore wallet metadata/load helpers, wallet repository source selection, points balance totals, flexible and airline account filtering, transfer partner lookup, wallet-based transfer option deduping, airport group expansion, and browser wallet storage/repository CRUD helpers.
+- Remaining: saved-search cloud sync, active-search cloud sync, cross-tab cloud wallet sync, and live provider integrations.
 
 ---
 
@@ -1061,7 +1092,7 @@ Stored data should be limited to:
 - Search results
 - Recommendation history, optional
 
-Current Firestore writes are limited to the minimal signed-in user profile at `users/{uid}`. Manual wallet balances, saved searches, active searches, search results, and recommendation history are not written to Firestore yet.
+Current Firestore writes are limited to the minimal signed-in user profile at `users/{uid}` and signed-in wallet data under `users/{uid}/walletAccounts/{accountId}` plus `users/{uid}/walletMeta/current`. Saved searches, active searches, search results, and recommendation history are not written to Firestore yet.
 
 ---
 

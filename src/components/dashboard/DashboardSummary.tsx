@@ -1,9 +1,8 @@
 "use client";
 
 import type { JSX } from "react";
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
-import { MOCK_POINTS_ACCOUNTS } from "@/data/mockPointsAccounts";
 import { TRANSFER_PARTNERS } from "@/data/transferPartners";
 import {
   getTotalAirlineMiles,
@@ -11,14 +10,9 @@ import {
 } from "@/lib/points/totals";
 import { loadSavedSearches } from "@/lib/search/storage";
 import { getTransferOptionsFromWallet } from "@/lib/transferPartners/lookup";
-import {
-  hasStoredWalletAccounts,
-  loadWalletAccounts,
-} from "@/lib/wallet/storage";
-import type { PointsAccount } from "@/types/points";
+import { useWalletAccounts } from "@/lib/wallet/useWalletAccounts";
 import type { SavedSearch } from "@/types/search";
 
-const LOCAL_USER_ID = "local-user";
 const numberFormatter = new Intl.NumberFormat("en-US");
 const cabinLabels = {
   business: "Business",
@@ -26,39 +20,6 @@ const cabinLabels = {
   first: "First",
   premium_economy: "Premium economy",
 } as const;
-
-function createSeedAccounts(): PointsAccount[] {
-  return MOCK_POINTS_ACCOUNTS.map((account) => ({
-    ...account,
-    userId: LOCAL_USER_ID,
-  }));
-}
-
-function getWalletAccountsSnapshot(): PointsAccount[] {
-  return hasStoredWalletAccounts()
-    ? loadWalletAccounts()
-    : createSeedAccounts();
-}
-
-function subscribeToHydration(onStoreChange: () => void): () => void {
-  if (typeof window === "undefined") {
-    return () => undefined;
-  }
-
-  const timeoutId = window.setTimeout(onStoreChange, 0);
-
-  return () => {
-    window.clearTimeout(timeoutId);
-  };
-}
-
-function getClientSnapshot(): boolean {
-  return true;
-}
-
-function getServerSnapshot(): boolean {
-  return false;
-}
 
 function formatTransferRatio(transferRatio: number): string {
   if (transferRatio === 1) {
@@ -101,15 +62,9 @@ function formatDateRange(search: SavedSearch): string {
 }
 
 export function DashboardSummary(): JSX.Element {
-  const isLoaded = useSyncExternalStore(
-    subscribeToHydration,
-    getClientSnapshot,
-    getServerSnapshot,
-  );
-  const accounts = useMemo(
-    () => (isLoaded ? getWalletAccountsSnapshot() : []),
-    [isLoaded],
-  );
+  const wallet = useWalletAccounts({ seedLocalAccounts: true });
+  const isLoaded = !wallet.isLoading;
+  const accounts = wallet.accounts;
   const totalFlexiblePoints = useMemo(
     () => getTotalFlexiblePoints(accounts),
     [accounts],
@@ -126,16 +81,24 @@ export function DashboardSummary(): JSX.Element {
     () => (isLoaded ? loadSavedSearches() : []),
     [isLoaded],
   );
+  const walletSourceLabel =
+    wallet.source === "cloud" ? "cloud wallet" : "browser wallet";
   const summaryCards = [
     {
       label: "Flexible points",
       value: numberFormatter.format(totalFlexiblePoints),
-      note: "Saved manual balances across credit card currencies.",
+      note:
+        wallet.source === "cloud"
+          ? "Signed-in Firestore balances across credit card currencies."
+          : "Saved manual balances across credit card currencies.",
     },
     {
       label: "Airline miles",
       value: numberFormatter.format(totalAirlineMiles),
-      note: "Saved airline balances from the browser wallet.",
+      note:
+        wallet.source === "cloud"
+          ? "Signed-in Firestore airline balances."
+          : "Saved airline balances from the browser wallet.",
     },
     {
       label: "Transfer options",
@@ -161,8 +124,9 @@ export function DashboardSummary(): JSX.Element {
               Decide which points and miles option to check first.
             </h2>
             <p className="max-w-2xl text-base leading-7 text-[#526158]">
-              WDNNSP now reads the browser-persistent wallet, summarizes saved
-              balances, and shows transfer opportunities before adding Firebase.
+              WDNNSP reads your {walletSourceLabel}, summarizes saved balances,
+              and shows transfer opportunities before live flight APIs are
+              added.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -191,6 +155,16 @@ export function DashboardSummary(): JSX.Element {
           </p>
         </aside>
       </section>
+
+      {wallet.error ? (
+        <section
+          className="rounded-lg border border-[#ead99d] bg-[#fff9df] p-5 text-sm leading-6 text-[#5d4c1d]"
+          role="alert"
+        >
+          <p className="font-semibold text-[#14211b]">Wallet warning</p>
+          <p className="mt-1">{wallet.error}</p>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-4">
         {summaryCards.map((card) => (
@@ -273,7 +247,11 @@ export function DashboardSummary(): JSX.Element {
           </p>
         </div>
 
-        {transferOptions.length > 0 ? (
+        {!isLoaded ? (
+          <div className="mt-5 rounded-md border border-dashed border-[#b8c8b2] p-5 text-sm text-[#526158]">
+            Loading wallet transfer options.
+          </div>
+        ) : transferOptions.length > 0 ? (
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             {transferOptions.slice(0, 8).map((partner) => (
               <article

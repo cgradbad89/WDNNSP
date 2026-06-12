@@ -4,7 +4,6 @@ import type { FormEvent, JSX } from "react";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
-import { MOCK_POINTS_ACCOUNTS } from "@/data/mockPointsAccounts";
 import { SavedSearchesList } from "@/components/search/SavedSearchesList";
 import { SearchCabinField } from "@/components/search/SearchCabinField";
 import { SearchDateFields } from "@/components/search/SearchDateFields";
@@ -31,13 +30,8 @@ import {
   type SearchValidationErrors,
   validateSavedSearchInput,
 } from "@/lib/search/validation";
-import {
-  hasStoredWalletAccounts,
-  loadWalletAccounts,
-  WALLET_ACCOUNTS_CHANGED_EVENT,
-} from "@/lib/wallet/storage";
+import { useWalletAccounts } from "@/lib/wallet/useWalletAccounts";
 import type { Cabin } from "@/types/flights";
-import type { PointsAccount } from "@/types/points";
 import type { SavedSearch, TripType } from "@/types/search";
 
 type SearchFormState = {
@@ -68,57 +62,6 @@ const initialFormState: SearchFormState = {
 };
 
 const numberFormatter = new Intl.NumberFormat("en-US");
-
-function createSeedAccounts(): PointsAccount[] {
-  return MOCK_POINTS_ACCOUNTS.map((account) => ({
-    ...account,
-    userId: LOCAL_USER_ID,
-  }));
-}
-
-function getWalletAccountsSnapshot(): PointsAccount[] {
-  return hasStoredWalletAccounts()
-    ? loadWalletAccounts()
-    : createSeedAccounts();
-}
-
-function subscribeToWalletAccounts(onStoreChange: () => void): () => void {
-  if (typeof window === "undefined") {
-    return () => undefined;
-  }
-
-  window.addEventListener("focus", onStoreChange);
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener(WALLET_ACCOUNTS_CHANGED_EVENT, onStoreChange);
-
-  return () => {
-    window.removeEventListener("focus", onStoreChange);
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener(WALLET_ACCOUNTS_CHANGED_EVENT, onStoreChange);
-  };
-}
-
-function getWalletAccountsClientSnapshot(): string {
-  return JSON.stringify(getWalletAccountsSnapshot());
-}
-
-function getWalletAccountsServerSnapshot(): string {
-  return JSON.stringify(createSeedAccounts());
-}
-
-function parseWalletAccountsSnapshot(snapshot: string): PointsAccount[] {
-  try {
-    const parsedSnapshot: unknown = JSON.parse(snapshot);
-
-    if (Array.isArray(parsedSnapshot)) {
-      return parsedSnapshot as PointsAccount[];
-    }
-  } catch {
-    return createSeedAccounts();
-  }
-
-  return createSeedAccounts();
-}
 
 function subscribeToHydration(onStoreChange: () => void): () => void {
   if (typeof window === "undefined") {
@@ -209,6 +152,7 @@ function clearErrorsForField(
 
 export function TripSearchForm(): JSX.Element {
   const router = useRouter();
+  const wallet = useWalletAccounts({ seedLocalAccounts: true });
   const isLoaded = useSyncExternalStore(
     subscribeToHydration,
     getClientHydrationSnapshot,
@@ -219,15 +163,7 @@ export function TripSearchForm(): JSX.Element {
   const [errors, setErrors] = useState<SearchValidationErrors>({});
   const [statusMessage, setStatusMessage] = useState("");
   const [savedSearchVersion, setSavedSearchVersion] = useState(0);
-  const walletAccountsSnapshot = useSyncExternalStore(
-    subscribeToWalletAccounts,
-    getWalletAccountsClientSnapshot,
-    getWalletAccountsServerSnapshot,
-  );
-  const walletAccounts = useMemo(
-    () => parseWalletAccountsSnapshot(walletAccountsSnapshot),
-    [walletAccountsSnapshot],
-  );
+  const walletAccounts = wallet.accounts;
   const originCodes = normalizeSingleCode(formState.origin);
   const destinationCodes = normalizeSingleCode(formState.destination);
   const passengers = parseRequiredNumber(formState.passengers);
@@ -374,9 +310,12 @@ export function TripSearchForm(): JSX.Element {
                 Flexible points
               </p>
               <p className="mt-2 text-xl font-semibold text-[#14211b]">
-                {formatNumber(getTotalFlexiblePoints(walletAccounts))}
+                {wallet.isLoading
+                  ? "Loading"
+                  : formatNumber(getTotalFlexiblePoints(walletAccounts))}
               </p>
               <p className="mt-1 text-xs leading-5 text-[#637268]">
+                {wallet.source === "cloud" ? "Cloud" : "Local"} wallet -{" "}
                 {flexibleAccounts.length} transferable account
                 {flexibleAccounts.length === 1 ? "" : "s"} ready
               </p>
@@ -386,7 +325,9 @@ export function TripSearchForm(): JSX.Element {
                 Airline miles
               </p>
               <p className="mt-2 text-xl font-semibold text-[#14211b]">
-                {formatNumber(getTotalAirlineMiles(walletAccounts))}
+                {wallet.isLoading
+                  ? "Loading"
+                  : formatNumber(getTotalAirlineMiles(walletAccounts))}
               </p>
               <p className="mt-1 text-xs leading-5 text-[#637268]">
                 {airlineAccounts.length} direct airline account
@@ -396,6 +337,16 @@ export function TripSearchForm(): JSX.Element {
           </div>
         </div>
       </section>
+
+      {wallet.error ? (
+        <section
+          className="rounded-lg border border-[#ead99d] bg-[#fff9df] p-5 text-sm leading-6 text-[#5d4c1d]"
+          role="alert"
+        >
+          <p className="font-semibold text-[#14211b]">Wallet warning</p>
+          <p className="mt-1">{wallet.error}</p>
+        </section>
+      ) : null}
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <form
@@ -482,7 +433,19 @@ export function TripSearchForm(): JSX.Element {
               Wallet readiness
             </p>
             <div className="mt-4 space-y-3">
-              {topWalletAccounts.map((account) => (
+              {wallet.isLoading ? (
+                <div className="rounded-md border border-dashed border-[#b8c8b2] p-4 text-sm text-[#637268]">
+                  Loading wallet balances.
+                </div>
+              ) : null}
+
+              {!wallet.isLoading && topWalletAccounts.length === 0 ? (
+                <div className="rounded-md border border-dashed border-[#b8c8b2] p-4 text-sm text-[#637268]">
+                  No wallet balances available for this search yet.
+                </div>
+              ) : null}
+
+              {!wallet.isLoading && topWalletAccounts.map((account) => (
                 <article
                   className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
                   key={account.id}

@@ -1,23 +1,19 @@
 "use client";
 
 import type { ChangeEvent, FormEvent, JSX } from "react";
-import {
-  useEffect,
-  useReducer,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
-import { MOCK_POINTS_ACCOUNTS } from "@/data/mockPointsAccounts";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { POINTS_PROGRAMS } from "@/data/pointsPrograms";
+import type { WalletLoadResult } from "@/lib/wallet/repository";
 import {
   createWalletAccount,
   deleteWalletAccount,
   hasStoredWalletAccounts,
   loadWalletAccounts,
-  saveWalletAccounts,
   updateWalletAccount,
+  WALLET_ACCOUNTS_CHANGED_EVENT,
 } from "@/lib/wallet/storage";
+import { useWalletAccounts } from "@/lib/wallet/useWalletAccounts";
 import type { PointsAccount } from "@/types/points";
 
 type AccountDraft = {
@@ -38,6 +34,11 @@ const programTypeLabels = {
   credit_card: "Flexible points",
   hotel: "Hotel points",
 } as const;
+const emptyLocalWalletSnapshot: WalletLoadResult = {
+  accounts: [],
+  hasStoredValue: false,
+  source: "local",
+};
 
 function formatDate(date: string): string {
   const normalizedDate = date.includes("T") ? date : `${date}T00:00:00`;
@@ -47,39 +48,6 @@ function formatDate(date: string): string {
     day: "numeric",
     year: "numeric",
   }).format(new Date(normalizedDate));
-}
-
-function createSeedAccounts(): PointsAccount[] {
-  return MOCK_POINTS_ACCOUNTS.map((account) => ({
-    ...account,
-    userId: LOCAL_USER_ID,
-  }));
-}
-
-function getWalletAccountsSnapshot(): PointsAccount[] {
-  return hasStoredWalletAccounts()
-    ? loadWalletAccounts()
-    : createSeedAccounts();
-}
-
-function subscribeToHydration(onStoreChange: () => void): () => void {
-  if (typeof window === "undefined") {
-    return () => undefined;
-  }
-
-  const timeoutId = window.setTimeout(onStoreChange, 0);
-
-  return () => {
-    window.clearTimeout(timeoutId);
-  };
-}
-
-function getClientSnapshot(): boolean {
-  return true;
-}
-
-function getServerSnapshot(): boolean {
-  return false;
 }
 
 function createAccountDrafts(
@@ -110,17 +78,75 @@ function parseBalance(value: string): number | null {
   return parsedValue;
 }
 
+function getLocalWalletImportSnapshot(): WalletLoadResult {
+  return {
+    accounts: loadWalletAccounts(),
+    hasStoredValue: hasStoredWalletAccounts(),
+    source: "local",
+  };
+}
+
+function subscribeToLocalWalletImport(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+
+  const timeoutId = window.setTimeout(onStoreChange, 0);
+
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener(WALLET_ACCOUNTS_CHANGED_EVENT, onStoreChange);
+
+  return () => {
+    window.clearTimeout(timeoutId);
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener(WALLET_ACCOUNTS_CHANGED_EVENT, onStoreChange);
+  };
+}
+
+function getLocalWalletImportClientSnapshot(): string {
+  return JSON.stringify(getLocalWalletImportSnapshot());
+}
+
+function getLocalWalletImportServerSnapshot(): string {
+  return JSON.stringify(emptyLocalWalletSnapshot);
+}
+
+function parseLocalWalletImportSnapshot(snapshot: string): WalletLoadResult {
+  try {
+    const parsedSnapshot: unknown = JSON.parse(snapshot);
+
+    if (
+      typeof parsedSnapshot === "object" &&
+      parsedSnapshot !== null &&
+      !Array.isArray(parsedSnapshot) &&
+      Array.isArray((parsedSnapshot as WalletLoadResult).accounts) &&
+      typeof (parsedSnapshot as WalletLoadResult).hasStoredValue ===
+        "boolean" &&
+      (parsedSnapshot as WalletLoadResult).source === "local"
+    ) {
+      return parsedSnapshot as WalletLoadResult;
+    }
+  } catch {
+    return emptyLocalWalletSnapshot;
+  }
+
+  return emptyLocalWalletSnapshot;
+}
+
 export function WalletManager(): JSX.Element {
-  const isLoaded = useSyncExternalStore(
-    subscribeToHydration,
-    getClientSnapshot,
-    getServerSnapshot,
+  const { user } = useAuth();
+  const wallet = useWalletAccounts({ seedLocalAccounts: true });
+  const localWalletSnapshot = useSyncExternalStore(
+    subscribeToLocalWalletImport,
+    getLocalWalletImportClientSnapshot,
+    getLocalWalletImportServerSnapshot,
   );
-  const [, refreshWalletSnapshot] = useReducer(
-    (version: number) => version + 1,
-    0,
-  );
-  const accounts = isLoaded ? getWalletAccountsSnapshot() : [];
+  const localWallet = user
+    ? parseLocalWalletImportSnapshot(localWalletSnapshot)
+    : null;
+  const accounts = wallet.accounts;
+  const isLoaded = !wallet.isLoading;
+  const walletUserId = user?.uid ?? LOCAL_USER_ID;
   const [accountDrafts, setAccountDrafts] = useState<
     Record<string, AccountDraft>
   >({});
@@ -132,7 +158,22 @@ export function WalletManager(): JSX.Element {
   const [addError, setAddError] = useState("");
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const [saveFeedback, setSaveFeedback] = useState<SaveFeedback>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState("");
   const saveFeedbackTimeoutRef = useRef<number | null>(null);
+  const hasImportableLocalWallet =
+    Boolean(user) &&
+    Boolean(localWallet?.hasStoredValue) &&
+    (localWallet?.accounts.length ?? 0) > 0;
+  const walletModeLabel =
+    wallet.source === "cloud" ? "Cloud wallet" : "Browser wallet";
+  const walletModeMessage = user
+    ? "Cloud wallet sync is on for this account. Wallet balances save to Firestore and are used by dashboard, search, and results."
+    : "Wallet changes save in this browser. Sign in to sync this wallet across devices.";
+  const addAccountStorageLabel =
+    wallet.source === "cloud"
+      ? "Saved to Firestore cloud wallet"
+      : "Saved locally in this browser";
 
   useEffect(() => {
     return () => {
@@ -154,20 +195,25 @@ export function WalletManager(): JSX.Element {
     }, SAVE_FEEDBACK_TIMEOUT_MS);
   }
 
-  function persistAccounts(nextAccounts: PointsAccount[]): boolean {
+  async function persistAccounts(nextAccounts: PointsAccount[]): Promise<boolean> {
     try {
-      saveWalletAccounts(nextAccounts);
+      await wallet.saveAccounts(nextAccounts);
       setAccountDrafts(createAccountDrafts(nextAccounts));
-      refreshWalletSnapshot();
       showSaveFeedback({
         kind: "success",
-        message: "Wallet changes saved.",
+        message:
+          wallet.source === "cloud"
+            ? "Cloud wallet changes saved."
+            : "Wallet changes saved.",
       });
       return true;
     } catch {
       showSaveFeedback({
         kind: "error",
-        message: "Wallet changes could not be saved.",
+        message:
+          wallet.source === "cloud"
+            ? "Cloud wallet changes could not be saved."
+            : "Wallet changes could not be saved.",
       });
       return false;
     }
@@ -178,8 +224,13 @@ export function WalletManager(): JSX.Element {
     setAddError("");
   }
 
-  function handleAddAccount(event: FormEvent<HTMLFormElement>): void {
+  async function handleAddAccount(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+
+    if (!isLoaded) {
+      setAddError("Wallet is still loading.");
+      return;
+    }
 
     const selectedProgram = POINTS_PROGRAMS.find(
       (program) => program.id === selectedProgramId,
@@ -197,7 +248,7 @@ export function WalletManager(): JSX.Element {
     }
 
     const nextAccount = createWalletAccount({
-      userId: LOCAL_USER_ID,
+      userId: walletUserId,
       programId: selectedProgram.id,
       programName: selectedProgram.name,
       programType: selectedProgram.type,
@@ -205,7 +256,7 @@ export function WalletManager(): JSX.Element {
       notes: newNotes.trim() === "" ? undefined : newNotes.trim(),
     });
 
-    const didSave = persistAccounts([...accounts, nextAccount]);
+    const didSave = await persistAccounts([...accounts, nextAccount]);
 
     if (!didSave) {
       return;
@@ -240,7 +291,7 @@ export function WalletManager(): JSX.Element {
     }));
   }
 
-  function handleSaveAccount(account: PointsAccount): void {
+  async function handleSaveAccount(account: PointsAccount): Promise<void> {
     const draft = accountDrafts[account.id] ?? {
       balance: String(account.balance),
       notes: account.notes ?? "",
@@ -260,7 +311,7 @@ export function WalletManager(): JSX.Element {
       notes: draft.notes.trim() === "" ? undefined : draft.notes.trim(),
     });
 
-    const didSave = persistAccounts(nextAccounts);
+    const didSave = await persistAccounts(nextAccounts);
 
     if (!didSave) {
       return;
@@ -272,10 +323,10 @@ export function WalletManager(): JSX.Element {
     }));
   }
 
-  function handleDeleteAccount(accountId: string): void {
+  async function handleDeleteAccount(accountId: string): Promise<void> {
     const nextAccounts = deleteWalletAccount(accounts, accountId);
 
-    const didSave = persistAccounts(nextAccounts);
+    const didSave = await persistAccounts(nextAccounts);
 
     if (!didSave) {
       return;
@@ -286,6 +337,39 @@ export function WalletManager(): JSX.Element {
       delete remainingErrors[accountId];
       return remainingErrors;
     });
+  }
+
+  async function handleImportLocalWallet(): Promise<void> {
+    if (!user || !localWallet || localWallet.accounts.length === 0) {
+      return;
+    }
+
+    setIsImporting(true);
+    setImportStatus("");
+
+    try {
+      const importedAccounts = localWallet.accounts.map((account) => ({
+        ...account,
+        userId: user.uid,
+      }));
+
+      await wallet.saveAccounts(importedAccounts);
+      await wallet.reload();
+      setAccountDrafts(createAccountDrafts(importedAccounts));
+      showSaveFeedback({
+        kind: "success",
+        message: "This device's wallet was imported to cloud.",
+      });
+      setImportStatus("Local wallet copied to cloud. Local data was kept.");
+    } catch {
+      showSaveFeedback({
+        kind: "error",
+        message: "This device's wallet could not be imported to cloud.",
+      });
+      setImportStatus("Import failed. Your cloud wallet was not changed.");
+    } finally {
+      setIsImporting(false);
+    }
   }
 
   return (
@@ -314,11 +398,69 @@ export function WalletManager(): JSX.Element {
           Manual points wallet
         </h2>
         <p className="mt-3 max-w-2xl text-base leading-7 text-[#526158]">
-          Add, edit, and delete manual points balances in this browser. These
-          accounts are saved in localStorage for now; Firebase, account syncing,
-          and live loyalty connections are intentionally not implemented here.
+          Add, edit, and delete manual points balances. Signed-out wallets stay
+          in localStorage; signed-in wallets sync to Firestore for this account.
         </p>
       </section>
+
+      <section className="rounded-lg border border-[#d9e2d6] bg-white p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
+              {walletModeLabel}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-[#526158]">
+              {walletModeMessage}
+            </p>
+          </div>
+          <span className="w-fit rounded-md bg-[#edf3ea] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#2f6b4f]">
+            {wallet.source === "cloud" ? "Cloud sync on" : "Local fallback"}
+          </span>
+        </div>
+        {wallet.error ? (
+          <p className="mt-3 text-sm font-medium text-[#8f2d2d]" role="alert">
+            {wallet.error}
+          </p>
+        ) : null}
+      </section>
+
+      {hasImportableLocalWallet ? (
+        <section className="rounded-lg border border-[#ead99d] bg-[#fff9df] p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#5d4c1d]">
+                Local wallet found
+              </p>
+              <h3 className="mt-2 text-xl font-semibold tracking-tight text-[#14211b]">
+                Import this device&apos;s wallet to cloud
+              </h3>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5d4c1d]">
+                This copies {localWallet?.accounts.length ?? 0} local account
+                {(localWallet?.accounts.length ?? 0) === 1 ? "" : "s"} into
+                your Firestore wallet. Local data stays on this device.
+                {accounts.length > 0
+                  ? " Importing replaces the current cloud wallet with this device's wallet."
+                  : ""}
+              </p>
+              {importStatus ? (
+                <p className="mt-2 text-sm font-medium text-[#5d4c1d]">
+                  {importStatus}
+                </p>
+              ) : null}
+            </div>
+            <button
+              className="w-fit rounded-md bg-[#2f6b4f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#25573f] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isImporting || wallet.isLoading}
+              onClick={() => {
+                void handleImportLocalWallet();
+              }}
+              type="button"
+            >
+              {isImporting ? "Importing" : "Import local wallet"}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-lg border border-[#d9e2d6] bg-white p-6">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -330,7 +472,7 @@ export function WalletManager(): JSX.Element {
               New manual balance
             </h3>
           </div>
-          <p className="text-sm text-[#637268]">Saved locally in this browser</p>
+          <p className="text-sm text-[#637268]">{addAccountStorageLabel}</p>
         </div>
 
         <form
@@ -380,10 +522,11 @@ export function WalletManager(): JSX.Element {
 
           <div className="flex items-end">
             <button
-              className="w-full rounded-md bg-[#2f6b4f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#25573f]"
+              className="w-full rounded-md bg-[#2f6b4f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#25573f] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={wallet.isLoading}
               type="submit"
             >
-              Add account
+              {wallet.isLoading ? "Loading wallet" : "Add account"}
             </button>
           </div>
         </form>
@@ -404,7 +547,11 @@ export function WalletManager(): JSX.Element {
             </h3>
           </div>
           <p className="text-sm text-[#637268]">
-            {isLoaded ? `${accounts.length} accounts` : "Loading wallet"}
+            {isLoaded
+              ? `${accounts.length} ${wallet.source} account${
+                  accounts.length === 1 ? "" : "s"
+                }`
+              : "Loading wallet"}
           </p>
         </div>
 
@@ -470,15 +617,21 @@ export function WalletManager(): JSX.Element {
 
                     <div className="flex gap-2">
                       <button
-                        className="rounded-md bg-[#2f6b4f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#25573f]"
-                        onClick={() => handleSaveAccount(account)}
+                        className="rounded-md bg-[#2f6b4f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#25573f] disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={wallet.isLoading}
+                        onClick={() => {
+                          void handleSaveAccount(account);
+                        }}
                         type="button"
                       >
                         Save
                       </button>
                       <button
-                        className="rounded-md border border-[#b8c8b2] px-3 py-2 text-sm font-semibold text-[#24382d] hover:bg-white"
-                        onClick={() => handleDeleteAccount(account.id)}
+                        className="rounded-md border border-[#b8c8b2] px-3 py-2 text-sm font-semibold text-[#24382d] hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={wallet.isLoading}
+                        onClick={() => {
+                          void handleDeleteAccount(account.id);
+                        }}
                         type="button"
                       >
                         Delete
@@ -499,8 +652,8 @@ export function WalletManager(): JSX.Element {
 
         {isLoaded && accounts.length === 0 ? (
           <div className="mt-5 rounded-md border border-dashed border-[#b8c8b2] p-5 text-sm text-[#526158]">
-            No points accounts yet. Add a manual balance above to start the
-            wallet.
+            No points accounts yet. Add a manual balance above to start the{" "}
+            {wallet.source === "cloud" ? "cloud wallet" : "wallet"}.
           </div>
         ) : null}
       </section>

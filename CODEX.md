@@ -150,8 +150,11 @@ Current Firebase/Auth status:
 
 - Client Firebase SDK is initialized lazily from `NEXT_PUBLIC_FIREBASE_*` web app configuration only.
 - Firebase Auth supports Google and email/password from the shared header auth shell.
-- Firestore writes are limited to a minimal `users/{uid}` profile document after sign-in.
-- Wallet accounts, saved searches, active searches, and results remain localStorage-only until an explicit cloud-sync migration task.
+- Firestore writes are limited to the Firebase client SDK and are scoped under `users/{uid}`.
+- Signing in creates or updates a minimal `users/{uid}` profile document.
+- Signed-in wallet accounts sync under `users/{uid}/walletAccounts/{accountId}` with an intentional-empty marker at `users/{uid}/walletMeta/current`.
+- Signed-out wallet accounts remain localStorage-backed, and local wallet import to cloud is explicit/manual.
+- Saved searches, active searches, and results remain localStorage-only until an explicit cloud-sync migration task.
 - Do not print, commit, or stage `.env.local` or any secret/private credentials. Firebase Admin SDK and service accounts are not part of this app.
 
 ## Architecture Principles
@@ -198,6 +201,7 @@ lib/
   formatters/
   scoring/
   transferPartners/
+  wallet/
 
 data/
   airportGroups.ts
