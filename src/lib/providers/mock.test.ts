@@ -49,8 +49,8 @@ describe("mock flight providers", () => {
     expect(getMockCashFlightsForSearch(search)).toEqual(envelope.data);
     expect(envelope.metadata).toEqual({
       providerId: "mock-cash",
-      providerLabel: "Mock cash flight provider",
-      searchedAt: expect.any(String),
+      providerLabel: "Mock Cash Provider",
+      searchedAt: "2026-06-12T00:00:00.000Z",
       isLive: false,
     });
     expect(envelope.messages).toEqual([
@@ -71,8 +71,8 @@ describe("mock flight providers", () => {
     expect(getMockAwardFlightsForSearch(search)).toEqual(envelope.data);
     expect(envelope.metadata).toEqual({
       providerId: "mock-awards",
-      providerLabel: "Mock award flight provider",
-      searchedAt: expect.any(String),
+      providerLabel: "Mock Award Provider",
+      searchedAt: "2026-06-12T00:00:00.000Z",
       isLive: false,
     });
     expect(envelope.messages).toEqual([
@@ -99,6 +99,39 @@ describe("mock flight providers", () => {
     expect(cashOption.routeDetail?.segments).toHaveLength(1);
   });
 
+  it("adds real-provider-ready metadata to mock cash options", async () => {
+    const envelope = await mockCashFlightProvider.searchCashFlights(search);
+    const [cashOption] = envelope.data;
+
+    expect(cashOption.provider).toEqual({
+      providerId: "mock-cash",
+      providerLabel: "Mock Cash Provider",
+      resultId: cashOption.id,
+    });
+    expect(cashOption.freshness).toEqual({
+      searchedAt: "2026-06-12T00:00:00.000Z",
+      lastCheckedAt: "2026-06-12T00:00:00.000Z",
+      isLive: false,
+      isStale: false,
+    });
+    expect(cashOption.price).toEqual({
+      amount: cashOption.cashPriceUsd,
+      currency: "USD",
+    });
+    expect(cashOption.priceBreakdown?.total).toEqual(cashOption.price);
+    expect(cashOption.itinerary).toMatchObject({
+      durationMinutes: cashOption.routeDetail?.totalDurationMinutes,
+      stopCount: cashOption.stops,
+    });
+    expect(cashOption.limitations).toEqual([
+      {
+        code: "mock_data",
+        severity: "info",
+        message: "Using deterministic mock data until live providers are added.",
+      },
+    ]);
+  });
+
   it("keeps nonstop mock award route details free of layovers", async () => {
     const envelope =
       await mockAwardFlightProvider.searchAwardFlights(nonstopSearch);
@@ -112,6 +145,48 @@ describe("mock flight providers", () => {
           option.routeDetail?.segments.length === 1,
       ),
     ).toBe(true);
+  });
+
+  it("adds real-provider-ready metadata to mock award options", async () => {
+    const envelope = await mockAwardFlightProvider.searchAwardFlights(search);
+    const [awardOption] = envelope.data;
+
+    expect(awardOption.provider).toEqual({
+      providerId: "mock-awards",
+      providerLabel: "Mock Award Provider",
+      resultId: awardOption.id,
+    });
+    expect(awardOption.freshness).toEqual({
+      searchedAt: "2026-06-12T00:00:00.000Z",
+      lastCheckedAt: "2026-06-12T00:00:00.000Z",
+      isLive: false,
+      isStale: false,
+    });
+    expect(awardOption.availabilityStatus).toBe("available");
+    expect(awardOption.availableSeats).toBe(search.passengers);
+    expect(awardOption.fees).toEqual({
+      amount: awardOption.taxesAndFeesUsd,
+      currency: "USD",
+    });
+    expect(awardOption.taxesAndFees).toEqual(awardOption.fees);
+    expect(awardOption.sourceProgramId).toBe("air-canada-aeroplan");
+    expect(awardOption.sourceProgramLabel).toBe("Air Canada Aeroplan");
+    expect(awardOption.itinerary).toMatchObject({
+      durationMinutes: awardOption.routeDetail?.totalDurationMinutes,
+      stopCount: awardOption.stops,
+    });
+    expect(awardOption.limitations).toEqual([
+      {
+        code: "mock_data",
+        severity: "info",
+        message: "Using deterministic mock data until live providers are added.",
+      },
+      {
+        code: "verify_award_availability",
+        severity: "warning",
+        message: "Verify award availability directly before transferring points.",
+      },
+    ]);
   });
 
   it("keeps one-stop mock route details aligned with stop counts", async () => {

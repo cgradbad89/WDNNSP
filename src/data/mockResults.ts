@@ -1,6 +1,44 @@
 import type { AwardFlightOption } from "@/types/awards";
 import type { CashFlightOption, RouteDetail } from "@/types/flights";
+import type {
+  FreshnessMetadata,
+  PriceMoney,
+  ProviderLimitation,
+  ProviderResultReference,
+} from "@/types/providerResults";
 import type { SavedSearch } from "@/types/search";
+import { createFlightItineraryFromRouteDetail } from "@/lib/results/routeDetails";
+
+export const MOCK_RESULT_SEARCHED_AT = "2026-06-12T00:00:00.000Z";
+
+const MOCK_CASH_PROVIDER: Omit<ProviderResultReference, "resultId"> = {
+  providerId: "mock-cash",
+  providerLabel: "Mock Cash Provider",
+};
+
+const MOCK_AWARD_PROVIDER: Omit<ProviderResultReference, "resultId"> = {
+  providerId: "mock-awards",
+  providerLabel: "Mock Award Provider",
+};
+
+const MOCK_FRESHNESS: FreshnessMetadata = {
+  searchedAt: MOCK_RESULT_SEARCHED_AT,
+  lastCheckedAt: MOCK_RESULT_SEARCHED_AT,
+  isLive: false,
+  isStale: false,
+};
+
+const MOCK_DATA_LIMITATION: ProviderLimitation = {
+  code: "mock_data",
+  severity: "info",
+  message: "Using deterministic mock data until live providers are added.",
+};
+
+const MOCK_AWARD_VERIFY_LIMITATION: ProviderLimitation = {
+  code: "verify_award_availability",
+  severity: "warning",
+  message: "Verify award availability directly before transferring points.",
+};
 
 const cabinCashPriceByPassenger = {
   business: 3550,
@@ -61,6 +99,80 @@ const genericAwardPointsByPassenger = {
     united: 45000,
   },
 } as const;
+
+const awardProgramIds: Record<string, string> = {
+  "air canada aeroplan": "air-canada-aeroplan",
+  "air france-klm flying blue": "air-france-klm-flying-blue",
+  "united mileageplus": "united-mileageplus",
+  "virgin atlantic flying club": "virgin-atlantic-flying-club",
+};
+
+function createUsdMoney(amount: number): PriceMoney {
+  return {
+    amount,
+    currency: "USD",
+  };
+}
+
+function addMockCashMetadata(option: CashFlightOption): CashFlightOption {
+  const price = createUsdMoney(option.cashPriceUsd);
+
+  return {
+    ...option,
+    provider: {
+      ...MOCK_CASH_PROVIDER,
+      resultId: option.id,
+    },
+    freshness: { ...MOCK_FRESHNESS },
+    price,
+    priceBreakdown: {
+      total: price,
+    },
+    ...(option.routeDetail
+      ? { itinerary: createFlightItineraryFromRouteDetail(option.routeDetail) }
+      : {}),
+    limitations: [MOCK_DATA_LIMITATION],
+  };
+}
+
+function getAwardProgramId(airlineProgram: string): string | undefined {
+  return awardProgramIds[airlineProgram.trim().toLowerCase()];
+}
+
+function addMockAwardMetadata(
+  option: AwardFlightOption,
+  passengers: number,
+): AwardFlightOption {
+  const fees = createUsdMoney(option.taxesAndFeesUsd);
+  const sourceProgramId = getAwardProgramId(option.airlineProgram);
+
+  return {
+    ...option,
+    provider: {
+      ...MOCK_AWARD_PROVIDER,
+      resultId: option.id,
+    },
+    freshness: { ...MOCK_FRESHNESS },
+    availabilityStatus: "available",
+    availableSeats: passengers,
+    fees,
+    taxesAndFees: fees,
+    ...(sourceProgramId ? { sourceProgramId } : {}),
+    sourceProgramLabel: option.airlineProgram,
+    marketingAirline: option.operatingAirline ?? option.airlineProgram,
+    ...(option.routeDetail
+      ? { itinerary: createFlightItineraryFromRouteDetail(option.routeDetail) }
+      : {}),
+    limitations: [MOCK_DATA_LIMITATION, MOCK_AWARD_VERIFY_LIMITATION],
+  };
+}
+
+function addMockAwardMetadataToOptions(
+  options: AwardFlightOption[],
+  passengers: number,
+): AwardFlightOption[] {
+  return options.map((option) => addMockAwardMetadata(option, passengers));
+}
 
 function normalizeCode(code: string): string {
   return code.trim().toUpperCase();
@@ -365,9 +477,11 @@ export function getMockCashOptionForSearch(
         }),
   };
 
-  return search.maxStops === 0
+  const normalizedCashOption = search.maxStops === 0
     ? makeCashOptionNonstop(cashOption)
     : normalizeCashRoute(cashOption);
+
+  return addMockCashMetadata(normalizedCashOption);
 }
 
 export function getMockAwardOptionsForSearch(
@@ -380,57 +494,151 @@ export function getMockAwardOptionsForSearch(
   if (routeResemblesWashingtonToTokyo(search)) {
     const points = tokyoAwardPointsByPassenger[search.cabin];
 
-    return normalizeAwardOptionsForSearch(search, [
+    return addMockAwardMetadataToOptions(
+      normalizeAwardOptionsForSearch(search, [
+        {
+          id: `mock-aeroplan-${origin}-${destination}`,
+          source: "mock",
+          airlineProgram: "Air Canada Aeroplan",
+          operatingAirline: "Air Canada / ANA",
+          origin,
+          destination,
+          departureDateTime: getMockDepartureDateTime(search, "09:15"),
+          arrivalDateTime: getMockArrivalDateTime(search, "14:50"),
+          cabin: search.cabin,
+          pointsRequired: points.aeroplan * passengers,
+          taxesAndFeesUsd: 93 * passengers,
+          transferSources: ["Chase", "Amex", "Capital One"],
+          stops: 1,
+          durationMinutes: 910,
+          routeDetail: createTwoSegmentRouteDetail({
+            firstDurationMinutes: 345,
+            firstFlightNumber: "AC103",
+            layoverAirport: "YVR",
+            layoverDurationMinutes: 135,
+            origin,
+            secondDurationMinutes: 430,
+            secondFlightNumber: "NH115",
+            destination,
+          }),
+          confidence: "high",
+          lastCheckedAt: "Mock data",
+        },
+        {
+          id: `mock-virgin-${origin}-${destination}`,
+          source: "mock",
+          airlineProgram: "Virgin Atlantic Flying Club",
+          operatingAirline: "ANA partner award",
+          origin,
+          destination,
+          departureDateTime: getMockDepartureDateTime(search, "07:30"),
+          arrivalDateTime: getMockArrivalDateTime(search, "18:10"),
+          cabin: search.cabin,
+          pointsRequired: points.virgin * passengers,
+          taxesAndFeesUsd: 206 * passengers,
+          transferSources: ["Chase", "Amex", "Citi"],
+          stops: 2,
+          durationMinutes: 1030,
+          routeDetail: createThreeSegmentRouteDetail({
+            destination,
+            firstLayoverAirport: "JFK",
+            firstLayoverDurationMinutes: 185,
+            origin,
+            secondLayoverAirport: "LAX",
+            secondLayoverDurationMinutes: 120,
+          }),
+          confidence: "medium",
+          lastCheckedAt: "Mock data",
+        },
+        {
+          id: `mock-united-${origin}-${destination}`,
+          source: "mock",
+          airlineProgram: "United MileagePlus",
+          operatingAirline: "United / ANA",
+          origin,
+          destination,
+          departureDateTime: getMockDepartureDateTime(search, "11:10"),
+          arrivalDateTime: getMockArrivalDateTime(search, "16:45"),
+          cabin: search.cabin,
+          pointsRequired: points.united * passengers,
+          taxesAndFeesUsd: 24 * passengers,
+          transferSources: ["Chase", "Bilt"],
+          stops: 1,
+          durationMinutes: 900,
+          routeDetail: createTwoSegmentRouteDetail({
+            firstDurationMinutes: 355,
+            firstFlightNumber: "UA1738",
+            layoverAirport: "SFO",
+            layoverDurationMinutes: 105,
+            origin,
+            secondDurationMinutes: 440,
+            secondFlightNumber: "UA837",
+            destination,
+          }),
+          confidence: "high",
+          lastCheckedAt: "Mock data",
+        },
+      ]),
+      passengers,
+    );
+  }
+
+  const points = genericAwardPointsByPassenger[search.cabin];
+
+  return addMockAwardMetadataToOptions(
+    normalizeAwardOptionsForSearch(search, [
       {
         id: `mock-aeroplan-${origin}-${destination}`,
         source: "mock",
         airlineProgram: "Air Canada Aeroplan",
-        operatingAirline: "Air Canada / ANA",
+        operatingAirline: "Star Alliance mock",
         origin,
         destination,
-        departureDateTime: getMockDepartureDateTime(search, "09:15"),
-        arrivalDateTime: getMockArrivalDateTime(search, "14:50"),
+        departureDateTime: getMockDepartureDateTime(search, "09:00"),
+        arrivalDateTime: getMockArrivalDateTime(search, "21:10"),
         cabin: search.cabin,
         pointsRequired: points.aeroplan * passengers,
-        taxesAndFeesUsd: 93 * passengers,
+        taxesAndFeesUsd: 95 * passengers,
         transferSources: ["Chase", "Amex", "Capital One"],
         stops: 1,
-        durationMinutes: 910,
+        durationMinutes: 730,
         routeDetail: createTwoSegmentRouteDetail({
-          firstDurationMinutes: 345,
-          firstFlightNumber: "AC103",
-          layoverAirport: "YVR",
-          layoverDurationMinutes: 135,
+          firstDurationMinutes: 105,
+          firstFlightNumber: "AC501",
+          layoverAirport: "YYZ",
+          layoverDurationMinutes: 85,
           origin,
-          secondDurationMinutes: 430,
-          secondFlightNumber: "NH115",
+          secondDurationMinutes: 540,
+          secondFlightNumber: "AC860",
           destination,
         }),
-        confidence: "high",
+        confidence: "medium",
         lastCheckedAt: "Mock data",
       },
       {
-        id: `mock-virgin-${origin}-${destination}`,
+        id: `mock-flying-blue-${origin}-${destination}`,
         source: "mock",
-        airlineProgram: "Virgin Atlantic Flying Club",
-        operatingAirline: "ANA partner award",
+        airlineProgram: "Air France-KLM Flying Blue",
+        operatingAirline: "SkyTeam mock",
         origin,
         destination,
-        departureDateTime: getMockDepartureDateTime(search, "07:30"),
-        arrivalDateTime: getMockArrivalDateTime(search, "18:10"),
+        departureDateTime: getMockDepartureDateTime(search, "13:20"),
+        arrivalDateTime: getMockArrivalDateTime(search, "08:30"),
         cabin: search.cabin,
-        pointsRequired: points.virgin * passengers,
-        taxesAndFeesUsd: 206 * passengers,
-        transferSources: ["Chase", "Amex", "Citi"],
-        stops: 2,
-        durationMinutes: 1030,
-        routeDetail: createThreeSegmentRouteDetail({
-          destination,
-          firstLayoverAirport: "JFK",
-          firstLayoverDurationMinutes: 185,
+        pointsRequired: points.flyingBlue * passengers,
+        taxesAndFeesUsd: 180 * passengers,
+        transferSources: ["Chase", "Amex", "Capital One", "Citi"],
+        stops: 1,
+        durationMinutes: 790,
+        routeDetail: createTwoSegmentRouteDetail({
+          firstDurationMinutes: 425,
+          firstFlightNumber: "AF27",
+          layoverAirport: "CDG",
+          layoverDurationMinutes: 95,
           origin,
-          secondLayoverAirport: "LAX",
-          secondLayoverDurationMinutes: 120,
+          secondDurationMinutes: 270,
+          secondFlightNumber: "AF1680",
+          destination,
         }),
         confidence: "medium",
         lastCheckedAt: "Mock data",
@@ -439,119 +647,31 @@ export function getMockAwardOptionsForSearch(
         id: `mock-united-${origin}-${destination}`,
         source: "mock",
         airlineProgram: "United MileagePlus",
-        operatingAirline: "United / ANA",
+        operatingAirline: "United mock",
         origin,
         destination,
-        departureDateTime: getMockDepartureDateTime(search, "11:10"),
-        arrivalDateTime: getMockArrivalDateTime(search, "16:45"),
+        departureDateTime: getMockDepartureDateTime(search, "16:45"),
+        arrivalDateTime: getMockArrivalDateTime(search, "06:55"),
         cabin: search.cabin,
         pointsRequired: points.united * passengers,
         taxesAndFeesUsd: 24 * passengers,
         transferSources: ["Chase", "Bilt"],
-        stops: 1,
-        durationMinutes: 900,
+        stops: Math.min(search.maxStops ?? 1, 1),
+        durationMinutes: 705,
         routeDetail: createTwoSegmentRouteDetail({
-          firstDurationMinutes: 355,
-          firstFlightNumber: "UA1738",
-          layoverAirport: "SFO",
-          layoverDurationMinutes: 105,
+          firstDurationMinutes: 220,
+          firstFlightNumber: "UA909",
+          layoverAirport: "EWR",
+          layoverDurationMinutes: 80,
           origin,
-          secondDurationMinutes: 440,
-          secondFlightNumber: "UA837",
+          secondDurationMinutes: 405,
+          secondFlightNumber: "UA940",
           destination,
         }),
         confidence: "high",
         lastCheckedAt: "Mock data",
       },
-    ]);
-  }
-
-  const points = genericAwardPointsByPassenger[search.cabin];
-
-  return normalizeAwardOptionsForSearch(search, [
-    {
-      id: `mock-aeroplan-${origin}-${destination}`,
-      source: "mock",
-      airlineProgram: "Air Canada Aeroplan",
-      operatingAirline: "Star Alliance mock",
-      origin,
-      destination,
-      departureDateTime: getMockDepartureDateTime(search, "09:00"),
-      arrivalDateTime: getMockArrivalDateTime(search, "21:10"),
-      cabin: search.cabin,
-      pointsRequired: points.aeroplan * passengers,
-      taxesAndFeesUsd: 95 * passengers,
-      transferSources: ["Chase", "Amex", "Capital One"],
-      stops: 1,
-      durationMinutes: 730,
-      routeDetail: createTwoSegmentRouteDetail({
-        firstDurationMinutes: 105,
-        firstFlightNumber: "AC501",
-        layoverAirport: "YYZ",
-        layoverDurationMinutes: 85,
-        origin,
-        secondDurationMinutes: 540,
-        secondFlightNumber: "AC860",
-        destination,
-      }),
-      confidence: "medium",
-      lastCheckedAt: "Mock data",
-    },
-    {
-      id: `mock-flying-blue-${origin}-${destination}`,
-      source: "mock",
-      airlineProgram: "Air France-KLM Flying Blue",
-      operatingAirline: "SkyTeam mock",
-      origin,
-      destination,
-      departureDateTime: getMockDepartureDateTime(search, "13:20"),
-      arrivalDateTime: getMockArrivalDateTime(search, "08:30"),
-      cabin: search.cabin,
-      pointsRequired: points.flyingBlue * passengers,
-      taxesAndFeesUsd: 180 * passengers,
-      transferSources: ["Chase", "Amex", "Capital One", "Citi"],
-      stops: 1,
-      durationMinutes: 790,
-      routeDetail: createTwoSegmentRouteDetail({
-        firstDurationMinutes: 425,
-        firstFlightNumber: "AF27",
-        layoverAirport: "CDG",
-        layoverDurationMinutes: 95,
-        origin,
-        secondDurationMinutes: 270,
-        secondFlightNumber: "AF1680",
-        destination,
-      }),
-      confidence: "medium",
-      lastCheckedAt: "Mock data",
-    },
-    {
-      id: `mock-united-${origin}-${destination}`,
-      source: "mock",
-      airlineProgram: "United MileagePlus",
-      operatingAirline: "United mock",
-      origin,
-      destination,
-      departureDateTime: getMockDepartureDateTime(search, "16:45"),
-      arrivalDateTime: getMockArrivalDateTime(search, "06:55"),
-      cabin: search.cabin,
-      pointsRequired: points.united * passengers,
-      taxesAndFeesUsd: 24 * passengers,
-      transferSources: ["Chase", "Bilt"],
-      stops: Math.min(search.maxStops ?? 1, 1),
-      durationMinutes: 705,
-      routeDetail: createTwoSegmentRouteDetail({
-        firstDurationMinutes: 220,
-        firstFlightNumber: "UA909",
-        layoverAirport: "EWR",
-        layoverDurationMinutes: 80,
-        origin,
-        secondDurationMinutes: 405,
-        secondFlightNumber: "UA940",
-        destination,
-      }),
-      confidence: "high",
-      lastCheckedAt: "Mock data",
-    },
-  ]);
+    ]),
+    passengers,
+  );
 }

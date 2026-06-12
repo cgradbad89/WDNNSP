@@ -13,10 +13,11 @@ import type { AwardFlightOption } from "@/types/awards";
 import type { CashFlightOption } from "@/types/flights";
 import type { SavedSearch } from "@/types/search";
 
+const MOCK_PROVIDER_SEARCHED_AT = "2026-06-12T00:00:00.000Z";
 const MOCK_CASH_PROVIDER_ID = "mock-cash";
-const MOCK_CASH_PROVIDER_LABEL = "Mock cash flight provider";
+const MOCK_CASH_PROVIDER_LABEL = "Mock Cash Provider";
 const MOCK_AWARD_PROVIDER_ID = "mock-awards";
-const MOCK_AWARD_PROVIDER_LABEL = "Mock award flight provider";
+const MOCK_AWARD_PROVIDER_LABEL = "Mock Award Provider";
 
 const mockDataMessage: ProviderMessage = {
   code: "mock_data",
@@ -59,7 +60,7 @@ function createMockProviderEnvelope<T>({
     metadata: {
       providerId,
       providerLabel,
-      searchedAt: new Date().toISOString(),
+      searchedAt: MOCK_PROVIDER_SEARCHED_AT,
       isLive: false,
     },
     messages,

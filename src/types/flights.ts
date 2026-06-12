@@ -1,3 +1,11 @@
+import type {
+  FreshnessMetadata,
+  PriceMoney,
+  ProviderLimitation,
+  ProviderResultReference,
+} from "./providerResults";
+import type { FlightItinerary } from "./routes";
+
 export type Cabin = "economy" | "premium_economy" | "business" | "first";
 
 export interface FlightSegment {
@@ -24,6 +32,8 @@ export interface RouteDetail {
 export interface CashFlightOption {
   id: string;
   source: "duffel" | "amadeus" | "manual" | "mock";
+  provider?: ProviderResultReference;
+  freshness?: FreshnessMetadata;
   airline: string;
   flightNumbers: string[];
   origin: string;
@@ -34,6 +44,17 @@ export interface CashFlightOption {
   stops: number;
   cabin: Cabin;
   cashPriceUsd: number;
+  price?: PriceMoney;
+  priceBreakdown?: {
+    base?: PriceMoney;
+    taxesAndFees?: PriceMoney;
+    total?: PriceMoney;
+  };
+  fareBrand?: string;
+  fareRulesSummary?: string[];
+  baggageSummary?: string;
+  itinerary?: FlightItinerary;
+  limitations?: ProviderLimitation[];
   routeDetail?: RouteDetail;
   bookingUrl?: string;
 }

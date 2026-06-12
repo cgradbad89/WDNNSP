@@ -290,6 +290,8 @@ Cash flight result fields:
 type CashFlightOption = {
   id: string;
   source: "duffel" | "amadeus" | "manual" | "mock";
+  provider?: ProviderResultReference;
+  freshness?: FreshnessMetadata;
   airline: string;
   flightNumbers: string[];
   origin: string;
@@ -300,9 +302,24 @@ type CashFlightOption = {
   stops: number;
   cabin: Cabin;
   cashPriceUsd: number;
+  price?: PriceMoney;
+  priceBreakdown?: {
+    base?: PriceMoney;
+    taxesAndFees?: PriceMoney;
+    total?: PriceMoney;
+  };
+  fareBrand?: string;
+  fareRulesSummary?: string[];
+  baggageSummary?: string;
+  itinerary?: FlightItinerary;
+  limitations?: ProviderLimitation[];
   bookingUrl?: string;
 };
 ```
+
+`cashPriceUsd` remains the normalized value used by current scoring. Richer
+money, provider, freshness, itinerary, and limitation fields are modeled for
+future live provider normalization, but the app still uses mock cash data.
 
 ---
 
@@ -327,8 +344,11 @@ Award result fields:
 type AwardFlightOption = {
   id: string;
   source: "seats_aero" | "manual" | "mock" | "other";
+  provider?: ProviderResultReference;
+  freshness?: FreshnessMetadata;
   airlineProgram: string;
   operatingAirline?: string;
+  marketingAirline?: string;
   origin: string;
   destination: string;
   departureDateTime: string;
@@ -336,18 +356,29 @@ type AwardFlightOption = {
   cabin: Cabin;
   pointsRequired: number;
   taxesAndFeesUsd: number;
+  fees?: PriceMoney;
+  taxesAndFees?: PriceMoney;
   transferSources: string[];
+  sourceProgramId?: string;
+  sourceProgramLabel?: string;
   cashComparableUsd?: number;
   centsPerPoint?: number;
   stops: number;
   durationMinutes?: number;
+  itinerary?: FlightItinerary;
   confidence: "high" | "medium" | "low";
+  availabilityStatus?: "available" | "limited" | "waitlist" | "unavailable" | "unknown" | "stale";
+  availableSeats?: number;
+  limitations?: ProviderLimitation[];
   bookingUrl?: string;
   lastCheckedAt?: string;
 };
 ```
 
 The app must clearly label confidence/freshness of award availability.
+`pointsRequired` and `taxesAndFeesUsd` remain the normalized fields used by
+current cents-per-point and recommendation scoring. Freshness/staleness and
+availability status are modeled but are not yet deeply scored.
 
 ---
 
@@ -562,6 +593,10 @@ Current provider interfaces return `ProviderResultEnvelope<CashFlightOption>`
 instead of raw arrays. The envelope carries `status`, `data`, provider
 metadata, and messages while the app remains mock-backed.
 
+Cash result objects also include optional real-provider-ready metadata:
+provider references, ISO-like money values, freshness, itinerary, fare, baggage,
+and limitation fields. Existing scoring still uses `cashPriceUsd`.
+
 ---
 
 ### 7.4 Award availability data
@@ -580,6 +615,12 @@ Current provider interfaces return `ProviderResultEnvelope<AwardFlightOption>`
 instead of raw arrays. The envelope prepares the app for future live-provider
 loading, error, no-results, unsupported-route, rate-limit, and stale-data
 states, but no Seats.aero or other live award provider is implemented yet.
+
+Award result objects also include optional real-provider-ready metadata:
+provider references, ISO-like fee money values, freshness, availability status,
+available seats, source program identity, itinerary, and limitation fields.
+Existing scoring still uses `pointsRequired`, `taxesAndFeesUsd`, stops, cabin,
+and availability confidence.
 
 ---
 
@@ -727,6 +768,64 @@ type SearchMeta = {
 ### 8.5 SearchResultSet
 
 ```ts
+type ProviderResultReference = {
+  providerId: string;
+  providerLabel: string;
+  resultId?: string;
+  sourceUrl?: string;
+};
+
+type FreshnessMetadata = {
+  searchedAt?: string;
+  lastCheckedAt?: string;
+  expiresAt?: string;
+  isLive?: boolean;
+  isStale?: boolean;
+  staleReason?: string;
+};
+
+type PriceMoney = {
+  amount: number;
+  currency: string;
+};
+
+type ProviderLimitation = {
+  code: string;
+  message: string;
+  severity: "info" | "warning" | "error";
+};
+
+type FlightSegment = {
+  id: string;
+  marketingCarrier?: string;
+  operatingCarrier?: string;
+  flightNumber?: string;
+  origin: string;
+  destination: string;
+  departureDateTime?: string;
+  arrivalDateTime?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  durationMinutes?: number;
+  aircraft?: string;
+  cabin?: string;
+  bookingClass?: string;
+  terminal?: string;
+};
+
+type FlightLayover = {
+  airport: string;
+  durationMinutes: number;
+};
+
+type FlightItinerary = {
+  segments: FlightSegment[];
+  layovers: FlightLayover[];
+  durationMinutes?: number;
+  stopCount: number;
+  hasMixedCabin?: boolean;
+};
+
 type ProviderStatus =
   | "success"
   | "partial"
@@ -777,6 +876,11 @@ type SearchResultSet = {
 Search results are still generated from mock providers at runtime and are not
 written to Firestore. Future persistence should preserve provider envelope
 metadata/messages without storing secrets or provider credentials.
+
+Mock provider results currently populate deterministic provider references,
+freshness metadata, USD money fields, fees, availability status, and itinerary
+metadata. This is internal normalization only; live provider APIs remain
+deferred.
 
 ---
 
@@ -905,6 +1009,8 @@ src/
     search.ts
     flights.ts
     awards.ts
+    providerResults.ts
+    routes.ts
     scoring.ts
   data/
     airports.ts
@@ -1004,14 +1110,16 @@ Exit criteria:
 Current implementation status as of June 12, 2026:
 
 - Completed: cash flight provider interface returning typed provider envelopes,
-  mock cash provider envelope metadata/messages, deterministic mock cash
-  benchmark generation for the real `/results` route, driven by the active
-  search, first saved search, or a Tokyo Spring Trip fallback, with mock route
-  detail data for cash benchmark cards.
+  real-provider-ready cash result metadata types, mock cash provider envelope
+  metadata/messages, deterministic mock cash benchmark generation for the real
+  `/results` route, driven by the active search, first saved search, or a Tokyo
+  Spring Trip fallback, with mock route detail and normalized itinerary data for
+  cash benchmark cards.
 - Covered by unit tests: mock cash provider envelope output, provider status
-  combination, provider-exception envelope handling, cash benchmark use in
-  cents-per-point calculations through the scoring helpers, active-search
-  selection priority, and route-detail duration/summary formatting.
+  combination, provider-exception envelope handling, mock cash option metadata,
+  cash benchmark use in cents-per-point calculations through the scoring
+  helpers, active-search selection priority, and route-detail duration/summary
+  formatting.
 - Remaining: multiple cash options, manual cash entry, Duffel/Amadeus-style
   live provider integration, and production freshness UI/weighting.
 
@@ -1036,15 +1144,16 @@ Exit criteria:
 Current implementation status as of June 12, 2026:
 
 - Completed: award flight provider interface returning typed provider envelopes,
-  mock award provider envelope metadata/messages, deterministic mock award
-  options for the real `/results` route, including Tokyo-like Air Canada
-  Aeroplan, Virgin Atlantic Flying Club, and United MileagePlus examples,
-  generic route fallback options, route detail data, transfer-required display
-  details, and mock result filters.
+  real-provider-ready award result metadata types, mock award provider envelope
+  metadata/messages, deterministic mock award options for the real `/results`
+  route, including Tokyo-like Air Canada Aeroplan, Virgin Atlantic Flying Club,
+  and United MileagePlus examples, generic route fallback options, route detail
+  and normalized itinerary data, transfer-required display details, and mock
+  result filters.
 - Covered by unit tests: mock award provider envelope output, provider status
-  combination, provider-exception envelope handling, award option scoring
-  against wallet balances and transfer partners, transfer-path display
-  derivation, and mock result filter behavior.
+  combination, provider-exception envelope handling, mock award option metadata,
+  award option scoring against wallet balances and transfer partners,
+  transfer-path display derivation, and mock result filter behavior.
 - Remaining: manual award entry, real award availability providers, production
   freshness UI/weighting, and authenticated result persistence.
 

@@ -187,6 +187,12 @@ so the app can handle success, partial, no-results, unsupported-route,
 rate-limit, error, and stale-data states without coupling the UI to a specific
 provider.
 
+Real-provider cash and award data should normalize into the internal models in
+`src/types/flights.ts`, `src/types/awards.ts`, `src/types/providerResults.ts`,
+and `src/types/routes.ts`. Preserve current normalized numeric fields such as
+`cashPriceUsd`, `pointsRequired`, and `taxesAndFeesUsd` because scoring still
+uses them first.
+
 ## Suggested Architecture Quick Reference
 
 ```txt
@@ -262,15 +268,25 @@ Do not assume cached award availability is bookable. Preserve freshness/confiden
 Provider metadata and messages must never contain API keys, bearer tokens,
 request secrets, raw provider credentials, or private environment values.
 
+Provider and Firestore payloads should omit `undefined` fields before
+persistence or transmission. Optional provider-result fields are for normalized
+internal data; do not serialize placeholder `undefined` values.
+
+Mock provider data should stay deterministic. Use fixed mock timestamps or
+provider-envelope timestamps in tests instead of uncontrolled `new Date()`
+values in individual mock result objects.
+
 ## Provider Integration Rules
 
 Provider integrations should follow this pattern:
 
 1. Define a provider interface that returns a `ProviderResultEnvelope<T>`.
 2. Implement a mock provider that marks `metadata.isLive` as `false`.
-3. Build UI and scoring against normalized internal `envelope.data` types.
-4. Preserve provider status, metadata, and messages for future UI readiness.
-5. Add a live provider later without changing UI contracts.
+3. Normalize provider-specific money, freshness, availability, itinerary, and
+   limitation data into the shared internal model types.
+4. Build UI and scoring against normalized internal `envelope.data` types.
+5. Preserve provider status, metadata, and messages for future UI readiness.
+6. Add a live provider later without changing UI contracts.
 
 Do not hardcode Duffel, Amadeus, Seats.aero, or any airline-specific API shape into UI components.
 
