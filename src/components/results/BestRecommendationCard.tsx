@@ -137,27 +137,15 @@ function MetricCard({
 
 interface BestRecommendationCardProps {
   bestAwardOption: ScoredAwardOption | undefined;
-  cashBenchmark: number;
+  cashBenchmark: number | undefined;
 }
 
 export function BestRecommendationCard({
   bestAwardOption,
   cashBenchmark,
-}: BestRecommendationCardProps): JSX.Element {
+}: BestRecommendationCardProps): JSX.Element | null {
   if (!bestAwardOption) {
-    return (
-      <article className="rounded-lg border border-[#d9e2d6] bg-white p-5 md:p-6">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
-          Best Overall
-        </p>
-        <h3 className="mt-3 text-2xl font-semibold tracking-tight text-[#14211b]">
-          No award option matches the current filters
-        </h3>
-        <p className="mt-2 text-sm leading-6 text-[#637268]">
-          Relax one or more filters to restore the recommendation panel.
-        </p>
-      </article>
-    );
+    return null;
   }
 
   return (
@@ -191,10 +179,17 @@ export function BestRecommendationCard({
           label="Taxes"
           value={formatCurrency(bestAwardOption.taxesAndFeesUsd)}
         />
-        <MetricCard label="Cash" value={formatCurrency(cashBenchmark)} />
+        <MetricCard
+          label="Cash"
+          value={
+            cashBenchmark === undefined
+              ? "Unavailable"
+              : formatCurrency(cashBenchmark)
+          }
+        />
         <MetricCard
           label={<CentsPerPointHelp />}
-          value={bestAwardOption.centsPerPoint?.toFixed(1) ?? "0.0"}
+          value={bestAwardOption.centsPerPoint?.toFixed(1) ?? "N/A"}
         />
       </div>
 

@@ -8,6 +8,10 @@ import {
   EditSearchDrawer,
   type EditSearchFormState,
 } from "@/components/results/EditSearchDrawer";
+import { NoProviderResultsState } from "@/components/results/NoProviderResultsState";
+import { ProviderMessagesList } from "@/components/results/ProviderMessagesList";
+import { ProviderSourceNote } from "@/components/results/ProviderSourceNote";
+import { ProviderStatusBanner } from "@/components/results/ProviderStatusBanner";
 import {
   RankedAwardOptions,
   type RankedAwardOptionViewModel,
@@ -22,6 +26,7 @@ import { SearchSummaryStrip } from "@/components/results/SearchSummaryStrip";
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
 import { TRANSFER_PARTNERS } from "@/data/transferPartners";
 import { expandAirportCode } from "@/lib/airports/groups";
+import { getFlightSearchDisplayState } from "@/lib/providers/display";
 import { mockFlightSearchProviderSet } from "@/lib/providers/mock";
 import { searchFlightsWithProviders } from "@/lib/providers/search";
 import type { FlightSearchEnvelope } from "@/lib/providers/types";
@@ -275,10 +280,16 @@ export function ResultsPageClient(): JSX.Element {
       : undefined;
   const currentProviderError =
     providerError?.searchId === selectedSearch.id ? providerError.message : "";
+  const providerDisplay = flightSearchResults
+    ? getFlightSearchDisplayState(flightSearchResults)
+    : undefined;
   const cashOptions = flightSearchResults?.cash.data ?? EMPTY_CASH_OPTIONS;
   const cashOption = cashOptions[0];
   const awardOptions =
     flightSearchResults?.awards.data ?? EMPTY_AWARD_OPTIONS;
+  const hasCashResults = providerDisplay?.hasCashResults ?? false;
+  const hasAwardResults = providerDisplay?.hasAwardResults ?? false;
+  const hasAnyProviderResults = hasCashResults || hasAwardResults;
   const recommendationResults = useMemo(
     () =>
       scoreAwardOptions(
@@ -321,9 +332,11 @@ export function ResultsPageClient(): JSX.Element {
     [decoratedAwardOptions, filters],
   );
   const bestAwardOption =
-    filteredAwardOptions.find(
-      (option) => option.recommendationLabel === "best_overall",
-    ) ?? filteredAwardOptions[0];
+    hasAwardResults
+      ? (filteredAwardOptions.find(
+          (option) => option.recommendationLabel === "best_overall",
+        ) ?? filteredAwardOptions[0])
+      : undefined;
   const rankedAwardOptionViewModels = useMemo<RankedAwardOptionViewModel[]>(
     () =>
       filteredAwardOptions.map((option) => ({
@@ -550,7 +563,7 @@ export function ResultsPageClient(): JSX.Element {
     );
   }
 
-  if (!flightSearchResults) {
+  if (!flightSearchResults || !providerDisplay) {
     return (
       <div className="rounded-lg border border-[#d9e2d6] bg-white p-6">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
@@ -607,30 +620,92 @@ export function ResultsPageClient(): JSX.Element {
         </section>
       ) : null}
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      {providerDisplay.showStatusBanner ? (
+        <div className="space-y-3">
+          <ProviderStatusBanner display={providerDisplay.banner} />
+          <ProviderMessagesList messages={flightSearchResults.messages} />
+        </div>
+      ) : null}
+
+      <section
+        aria-label="Booking disclaimer"
+        className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3 text-xs leading-5 text-[#526158]"
+      >
+        WDNNSP compares provider data for planning only; it is not a booking
+        engine. Verify prices, fees, and award space directly before booking or
+        transferring points.
+      </section>
+
+      <section
+        className={
+          hasAwardResults
+            ? "grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]"
+            : "grid gap-6"
+        }
+      >
         <div className="space-y-6">
-          <BestRecommendationCard
-            bestAwardOption={bestAwardOption}
-            cashBenchmark={cashOption?.cashPriceUsd ?? 0}
-          />
+          {hasAnyProviderResults ? (
+            <>
+              <BestRecommendationCard
+                bestAwardOption={bestAwardOption}
+                cashBenchmark={cashOption?.cashPriceUsd}
+              />
 
-          <CashBenchmarkCard
-            cashOption={recommendationResults.cashOption}
-            passengers={selectedSearch.passengers}
-          />
+              <div className="space-y-3">
+                <CashBenchmarkCard
+                  cashOption={recommendationResults.cashOption}
+                  hasAwardResults={hasAwardResults}
+                  passengers={selectedSearch.passengers}
+                  status={flightSearchResults.cash.status}
+                />
+                <ProviderSourceNote
+                  envelope={flightSearchResults.cash}
+                  label="Cash benchmark"
+                />
+              </div>
 
-          <RankedAwardOptions
-            awardOptions={rankedAwardOptionViewModels}
-            cashOption={recommendationResults.cashOption}
-            onViewRoute={handleOpenRouteDetails}
-            totalAwardOptionCount={decoratedAwardOptions.length}
-          />
+              <div className="space-y-3">
+                <RankedAwardOptions
+                  awardOptions={rankedAwardOptionViewModels}
+                  awardStatus={flightSearchResults.awards.status}
+                  cashOption={recommendationResults.cashOption}
+                  hasCashResults={hasCashResults}
+                  hasProviderAwardResults={hasAwardResults}
+                  onViewRoute={handleOpenRouteDetails}
+                  totalAwardOptionCount={decoratedAwardOptions.length}
+                />
+                <ProviderSourceNote
+                  envelope={flightSearchResults.awards}
+                  label="Award availability"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <NoProviderResultsState
+                kind="all"
+                status={flightSearchResults.overallStatus}
+              />
+              <div className="grid gap-3 lg:grid-cols-2">
+                <ProviderSourceNote
+                  envelope={flightSearchResults.cash}
+                  label="Cash benchmark"
+                />
+                <ProviderSourceNote
+                  envelope={flightSearchResults.awards}
+                  label="Award availability"
+                />
+              </div>
+            </>
+          )}
         </div>
 
-        <ResultsFiltersPanel
-          filters={filters}
-          onChangeFilter={handleChangeFilter}
-        />
+        {hasAwardResults ? (
+          <ResultsFiltersPanel
+            filters={filters}
+            onChangeFilter={handleChangeFilter}
+          />
+        ) : null}
       </section>
 
       {isEditOpen ? (

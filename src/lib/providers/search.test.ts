@@ -180,6 +180,29 @@ describe("searchFlightsWithProviders", () => {
     });
   });
 
+  it("returns partial when cash has no results and awards succeed", async () => {
+    const providers = createProviders({
+      cashEnvelope: createEnvelope({
+        data: [],
+        providerId: "cash",
+        providerLabel: "Cash",
+        status: "no_results",
+      }),
+    });
+
+    await expect(searchFlightsWithProviders(search, providers)).resolves.toMatchObject({
+      overallStatus: "partial",
+      cash: {
+        status: "no_results",
+        data: [],
+      },
+      awards: {
+        status: "success",
+        data: [awardOption],
+      },
+    });
+  });
+
   it("returns no_results when both providers have no results", async () => {
     const providers = createProviders({
       cashEnvelope: createEnvelope({
@@ -266,6 +289,35 @@ describe("searchFlightsWithProviders", () => {
       "overallStatus",
       "rate_limited",
     );
+  });
+
+  it("returns stale when both providers return stale usable data", async () => {
+    const providers = createProviders({
+      cashEnvelope: createEnvelope({
+        data: [cashOption],
+        providerId: "cash",
+        providerLabel: "Cash",
+        status: "stale",
+      }),
+      awardEnvelope: createEnvelope({
+        data: [awardOption],
+        providerId: "award",
+        providerLabel: "Award",
+        status: "stale",
+      }),
+    });
+
+    await expect(searchFlightsWithProviders(search, providers)).resolves.toMatchObject({
+      overallStatus: "stale",
+      cash: {
+        status: "stale",
+        data: [cashOption],
+      },
+      awards: {
+        status: "stale",
+        data: [awardOption],
+      },
+    });
   });
 
   it("converts provider exceptions into error envelopes", async () => {

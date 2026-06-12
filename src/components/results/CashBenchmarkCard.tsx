@@ -1,8 +1,10 @@
 "use client";
 
 import type { JSX } from "react";
+import { NoProviderResultsState } from "@/components/results/NoProviderResultsState";
 import { formatRouteSummary } from "@/lib/results/routeDetails";
 import type { ScoredCashOption } from "@/lib/scoring/recommendations";
+import type { ProviderStatus } from "@/lib/providers/types";
 import type { RouteDetail } from "@/types/flights";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
@@ -34,15 +36,25 @@ function getRouteSummary(option: {
 
 interface CashBenchmarkCardProps {
   cashOption: ScoredCashOption | undefined;
+  hasAwardResults: boolean;
   passengers: number;
+  status: ProviderStatus;
 }
 
 export function CashBenchmarkCard({
   cashOption,
+  hasAwardResults,
   passengers,
-}: CashBenchmarkCardProps): JSX.Element | null {
+  status,
+}: CashBenchmarkCardProps): JSX.Element {
   if (!cashOption) {
-    return null;
+    return (
+      <NoProviderResultsState
+        hasOtherResults={hasAwardResults}
+        kind="cash"
+        status={status}
+      />
+    );
   }
 
   return (

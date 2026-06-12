@@ -187,6 +187,13 @@ so the app can handle success, partial, no-results, unsupported-route,
 rate-limit, error, and stale-data states without coupling the UI to a specific
 provider.
 
+`/results` must render provider-envelope states without inventing data:
+cash-only, award-only, both-empty, partial failure, both-provider failure,
+rate-limited, unsupported-route, and stale-data outcomes should show clear
+state copy, source/freshness labels, and user-safe provider messages where
+useful. Do not show a best recommendation when no usable award option exists.
+Do not show a fake cash benchmark when cash provider data is unavailable.
+
 Real-provider cash and award data should normalize into the internal models in
 `src/types/flights.ts`, `src/types/awards.ts`, `src/types/providerResults.ts`,
 and `src/types/routes.ts`. Preserve current normalized numeric fields such as
@@ -289,6 +296,20 @@ Provider integrations should follow this pattern:
 6. Add a live provider later without changing UI contracts.
 
 Do not hardcode Duffel, Amadeus, Seats.aero, or any airline-specific API shape into UI components.
+
+## Provider Results UX Rules
+
+- Keep provider display logic in pure helpers such as
+  `src/lib/providers/display.ts`.
+- Keep `/results` mock-backed until a task explicitly asks for live providers.
+- Show source labels, demo/live status, freshness timestamps, and stale cautions
+  near the relevant provider section.
+- Show a planning-only/not-booking-engine disclaimer on `/results`.
+- Show provider messages only as user-safe summaries. Never expose raw provider
+  payloads, API keys, bearer tokens, request secrets, or private environment
+  values.
+- Provider freshness weighting and mixed-cabin scoring remain deferred; display
+  the metadata without changing the MVP scoring formula.
 
 ## Scoring and Calculation Rules
 

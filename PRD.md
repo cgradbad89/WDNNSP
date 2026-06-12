@@ -434,6 +434,10 @@ totalScore =
 
 This can be tuned over time.
 
+Provider freshness, stale-data status, mixed-cabin itinerary metadata, and
+provider coverage quality should be visible in the Results UI, but they are not
+yet weighted in the MVP scoring model.
+
 ---
 
 #### 5.9 Results Page
@@ -477,6 +481,26 @@ Results should include labels such as:
 - Fastest Itinerary
 - Best Cash Alternative
 - Not Recommended
+
+Results provider UX states:
+
+- `/results` consumes cash and award provider envelopes and must handle
+  loading, full success, cash-only, award-only, both-empty, partial failure,
+  both-provider failure, rate-limited, unsupported-route, and stale-data states.
+- Usable provider data should still render when the other provider has no
+  results or errors. The page must not create fake recommendation cards, fake
+  cash benchmarks, or misleading award recommendations for missing provider
+  data.
+- Each provider section should label its source, demo/live status, freshness,
+  and stale-data caution when applicable.
+- Provider messages shown to users must be user-safe summaries. Do not expose
+  raw provider payloads, API keys, bearer tokens, request secrets, or private
+  environment values.
+- `/results` should include a clear planning-only/not-booking-engine
+  disclaimer while preserving contextual transfer caution near transfer-required
+  details instead of a full prominent transfer-warning banner.
+- Current implementation remains mock-backed only. Live Amadeus, Duffel,
+  Seats.aero, and other provider integrations remain deferred.
 
 ---
 
@@ -1030,7 +1054,9 @@ Initial route inventory:
 - `/design/search` keeps the design-only run-search-first prototype as a reference, including airport autocomplete mock states
 - `/design/results` keeps the design-only results, edit-search, route-detail, and save-search prototype as a reference
 - `/results` shows deterministic mock cash and award results from provider
-  envelopes, ranked by the initial recommendation engine
+  envelopes, ranked by the initial recommendation engine, with source/freshness
+  labels and no-results, partial-failure, rate-limit, unsupported-route, and
+  stale-data states ready for future real providers
 - `/settings` shows the settings placeholder
 
 ---
@@ -1114,14 +1140,16 @@ Current implementation status as of June 12, 2026:
   metadata/messages, deterministic mock cash benchmark generation for the real
   `/results` route, driven by the active search, first saved search, or a Tokyo
   Spring Trip fallback, with mock route detail and normalized itinerary data for
-  cash benchmark cards.
+  cash benchmark cards. The Results UI now handles unavailable cash benchmarks
+  without inventing a fallback fare and keeps award results usable when cash
+  provider data is empty or unavailable.
 - Covered by unit tests: mock cash provider envelope output, provider status
   combination, provider-exception envelope handling, mock cash option metadata,
   cash benchmark use in cents-per-point calculations through the scoring
   helpers, active-search selection priority, and route-detail duration/summary
   formatting.
 - Remaining: multiple cash options, manual cash entry, Duffel/Amadeus-style
-  live provider integration, and production freshness UI/weighting.
+  live provider integration, and production freshness scoring.
 
 ---
 
@@ -1149,13 +1177,15 @@ Current implementation status as of June 12, 2026:
   route, including Tokyo-like Air Canada Aeroplan, Virgin Atlantic Flying Club,
   and United MileagePlus examples, generic route fallback options, route detail
   and normalized itinerary data, transfer-required display details, and mock
-  result filters.
+  result filters. The Results UI now handles no award provider data, partial
+  provider failures, rate limits, unsupported routes, and stale source cautions
+  without showing fake award recommendations.
 - Covered by unit tests: mock award provider envelope output, provider status
   combination, provider-exception envelope handling, mock award option metadata,
   award option scoring against wallet balances and transfer partners,
   transfer-path display derivation, and mock result filter behavior.
 - Remaining: manual award entry, real award availability providers, production
-  freshness UI/weighting, and authenticated result persistence.
+  freshness scoring, mixed-cabin scoring, and authenticated result persistence.
 
 ---
 
@@ -1175,11 +1205,19 @@ Exit criteria:
 - App explains why each recommendation is good or bad.
 - App clearly warns users before transfers.
 
-Current implementation status as of June 6, 2026:
+Current implementation status as of June 12, 2026:
 
-- Completed: cents-per-point calculator, initial weighted award scoring, recommendation labels, explanation/warning builders, real `/results` UI that reads active search first, result-page search editing/saving, working mock filters, route detail modals, and contextual transfer caution on transfer-required details.
+- Completed: cents-per-point calculator, initial weighted award scoring,
+  recommendation labels, explanation/warning builders, real `/results` UI that
+  reads active search first, result-page search editing/saving, working mock
+  filters, route detail modals, contextual transfer caution on transfer-required
+  details, provider source/freshness labels, not-booking-engine disclaimer, and
+  safe empty/partial provider rendering that skips best-recommendation cards
+  when no usable award recommendation exists.
 - Covered by unit tests: cents-per-point happy path, taxes/fees subtraction, invalid point and low-value guards, ranking, insufficient-points labeling, confidence scoring, stop-count scoring, label assignment, transfer-path filtering, and required transfer warning behavior.
-- Remaining: scoring tuning with real-world examples, cash-versus-award recommendation thresholds, provider freshness weighting, and live search execution.
+- Remaining: scoring tuning with real-world examples, cash-versus-award
+  recommendation thresholds, provider freshness weighting, mixed-cabin scoring,
+  and live search execution.
 
 ---
 

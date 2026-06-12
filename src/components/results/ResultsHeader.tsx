@@ -26,6 +26,18 @@ export function ResultsHeader({
   cashOption,
   selectedSearchName,
 }: ResultsHeaderProps): JSX.Element {
+  const hasAnyResults = bestAwardOption !== undefined || cashOption !== undefined;
+  const title = bestAwardOption
+    ? `Best option for ${selectedSearchName}`
+    : hasAnyResults
+      ? `Available results for ${selectedSearchName}`
+      : `No provider results for ${selectedSearchName}`;
+  const description = bestAwardOption
+    ? "Mock cash and award data are compared for the active search, then ranked with the weighted recommendation engine."
+    : hasAnyResults
+      ? "Provider data is incomplete for this search, so WDNNSP is showing the usable sections without inventing a recommendation."
+      : "The current providers did not return usable cash or award results for this search.";
+
   return (
     <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 shadow-[0_18px_50px_rgba(31,63,45,0.08)] md:p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -34,11 +46,10 @@ export function ResultsHeader({
             Results
           </p>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[#14211b] md:text-4xl">
-            Best option for {selectedSearchName}
+            {title}
           </h2>
           <p className="mt-3 max-w-xl text-base leading-7 text-[#526158]">
-            Mock cash and award data are compared for the active search, then
-            ranked with the weighted recommendation engine.
+            {description}
           </p>
         </div>
         <div className="grid min-w-full gap-3 rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3 sm:min-w-[420px] sm:grid-cols-3">
@@ -55,7 +66,7 @@ export function ResultsHeader({
               <CentsPerPointHelp />
             </p>
             <p className="mt-2 text-xl font-semibold text-[#14211b]">
-              {bestAwardOption?.centsPerPoint?.toFixed(1) ?? "0.0"}
+              {bestAwardOption?.centsPerPoint?.toFixed(1) ?? "N/A"}
             </p>
           </div>
           <div>

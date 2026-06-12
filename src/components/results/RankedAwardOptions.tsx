@@ -2,6 +2,7 @@
 
 import type { JSX } from "react";
 import { CentsPerPointHelp } from "@/components/results/CentsPerPointHelp";
+import { NoProviderResultsState } from "@/components/results/NoProviderResultsState";
 import { ResultsEmptyState } from "@/components/results/ResultsEmptyState";
 import { TransferPathDetails } from "@/components/results/TransferPathDetails";
 import type { RouteDetailsDrawerState } from "@/components/results/RouteDetailsDrawer";
@@ -15,6 +16,7 @@ import type {
   ScoredAwardOption,
   ScoredCashOption,
 } from "@/lib/scoring/recommendations";
+import type { ProviderStatus } from "@/lib/providers/types";
 import type { Cabin, RouteDetail } from "@/types/flights";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
@@ -329,15 +331,21 @@ function CashOptionCard({
 }
 
 interface RankedAwardOptionsProps {
+  awardStatus: ProviderStatus;
   awardOptions: RankedAwardOptionViewModel[];
   cashOption: ScoredCashOption | undefined;
+  hasCashResults: boolean;
+  hasProviderAwardResults: boolean;
   onViewRoute: (modal: RouteDetailsDrawerState, trigger: HTMLElement) => void;
   totalAwardOptionCount: number;
 }
 
 export function RankedAwardOptions({
+  awardStatus,
   awardOptions,
   cashOption,
+  hasCashResults,
+  hasProviderAwardResults,
   onViewRoute,
   totalAwardOptionCount,
 }: RankedAwardOptionsProps): JSX.Element {
@@ -357,7 +365,13 @@ export function RankedAwardOptions({
         </p>
       </div>
 
-      {awardOptions.length > 0 ? (
+      {!hasProviderAwardResults ? (
+        <NoProviderResultsState
+          hasOtherResults={hasCashResults}
+          kind="awards"
+          status={awardStatus}
+        />
+      ) : awardOptions.length > 0 ? (
         awardOptions.map(({ directBalance, option, transferPaths }) => (
           <AwardOptionCard
             directBalance={directBalance}
@@ -379,7 +393,7 @@ export function RankedAwardOptions({
         <ResultsEmptyState />
       )}
 
-      {cashOption ? (
+      {cashOption && hasProviderAwardResults ? (
         <CashOptionCard
           onViewRoute={(trigger) =>
             onViewRoute(
