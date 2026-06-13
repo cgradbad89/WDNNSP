@@ -181,6 +181,12 @@ Use mock providers before live providers.
 
 Do not call third-party flight, cash fare, or award availability APIs directly from React components.
 
+Browser/client code should call app-owned route handlers for provider-backed
+searches. The current search boundary is `POST /api/search/flights`, which uses
+mock providers server-side and returns a `FlightSearchApiResponse`. Client
+components should not import mock provider sets or call provider orchestration
+directly.
+
 Provider interfaces return typed result envelopes, not raw option arrays. Each
 envelope must carry `status`, `data`, provider metadata, and user-safe messages
 so the app can handle success, partial, no-results, unsupported-route,
@@ -274,6 +280,10 @@ Do not assume cached award availability is bookable. Preserve freshness/confiden
 
 Provider metadata and messages must never contain API keys, bearer tokens,
 request secrets, raw provider credentials, or private environment values.
+Provider secrets must stay server-only. Route handlers may normalize provider
+data into app-owned envelopes, but they must not return raw provider payloads,
+stack traces, API keys, bearer tokens, or private environment values to the
+client.
 
 Provider and Firestore payloads should omit `undefined` fields before
 persistence or transmission. Optional provider-result fields are for normalized
@@ -293,9 +303,16 @@ Provider integrations should follow this pattern:
    limitation data into the shared internal model types.
 4. Build UI and scoring against normalized internal `envelope.data` types.
 5. Preserve provider status, metadata, and messages for future UI readiness.
-6. Add a live provider later without changing UI contracts.
+6. Expose browser search through an app-owned route handler such as
+   `POST /api/search/flights`; keep provider orchestration and future provider
+   secrets on the server side.
+7. Add a live provider later without changing UI contracts.
 
 Do not hardcode Duffel, Amadeus, Seats.aero, or any airline-specific API shape into UI components.
+
+The only current flight-search API route is `POST /api/search/flights`. It is
+mock-backed, does not require auth yet, and should return only app-owned success
+or safe error responses.
 
 ## Provider Results UX Rules
 

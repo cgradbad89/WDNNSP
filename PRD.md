@@ -617,6 +617,12 @@ Current provider interfaces return `ProviderResultEnvelope<CashFlightOption>`
 instead of raw arrays. The envelope carries `status`, `data`, provider
 metadata, and messages while the app remains mock-backed.
 
+The browser calls the app-owned `POST /api/search/flights` route for flight
+search results. That route currently invokes the mock cash and award providers
+server-side and returns a `FlightSearchEnvelope`. This prepares the app for
+future secure live-provider integration without exposing provider secrets or
+raw provider payloads to the browser. No live cash provider is implemented yet.
+
 Cash result objects also include optional real-provider-ready metadata:
 provider references, ISO-like money values, freshness, itinerary, fare, baggage,
 and limitation fields. Existing scoring still uses `cashPriceUsd`.
@@ -639,6 +645,9 @@ Current provider interfaces return `ProviderResultEnvelope<AwardFlightOption>`
 instead of raw arrays. The envelope prepares the app for future live-provider
 loading, error, no-results, unsupported-route, rate-limit, and stale-data
 states, but no Seats.aero or other live award provider is implemented yet.
+The browser receives award provider results only through the app-owned
+`POST /api/search/flights` route; live provider credentials and raw provider
+responses must stay server-only.
 
 Award result objects also include optional real-provider-ready metadata:
 provider references, ISO-like fee money values, freshness, availability status,
@@ -884,6 +893,23 @@ type FlightSearchEnvelope = {
   messages: ProviderResultEnvelope<unknown>["messages"];
 };
 
+type FlightSearchApiRequest = {
+  search: SavedSearch;
+};
+
+type FlightSearchApiResponse =
+  | {
+      ok: true;
+      envelope: FlightSearchEnvelope;
+    }
+  | {
+      ok: false;
+      error: {
+        code: string;
+        message: string;
+      };
+    };
+
 type SearchResultSet = {
   id: string;
   userId: string;
@@ -900,6 +926,13 @@ type SearchResultSet = {
 Search results are still generated from mock providers at runtime and are not
 written to Firestore. Future persistence should preserve provider envelope
 metadata/messages without storing secrets or provider credentials.
+
+`POST /api/search/flights` is the app-owned search route used by the browser.
+It accepts a `SavedSearch` request body, validates supported route/date/traveler
+criteria, runs mock provider orchestration server-side, and returns the
+`FlightSearchEnvelope` response. Invalid searches return `INVALID_SEARCH`;
+unexpected failures return `SEARCH_FAILED`. Both errors are safe summaries and
+must not include stack traces, secrets, or raw provider payloads.
 
 Mock provider results currently populate deterministic provider references,
 freshness metadata, USD money fields, fees, availability status, and itinerary
@@ -1057,6 +1090,9 @@ Initial route inventory:
   envelopes, ranked by the initial recommendation engine, with source/freshness
   labels and no-results, partial-failure, rate-limit, unsupported-route, and
   stale-data states ready for future real providers
+- `/api/search/flights` accepts `POST` requests from `/results`, validates the
+  active `SavedSearch`, runs current mock provider orchestration server-side,
+  and returns app-owned `FlightSearchApiResponse` JSON
 - `/settings` shows the settings placeholder
 
 ---
@@ -1138,15 +1174,18 @@ Current implementation status as of June 12, 2026:
 - Completed: cash flight provider interface returning typed provider envelopes,
   real-provider-ready cash result metadata types, mock cash provider envelope
   metadata/messages, deterministic mock cash benchmark generation for the real
-  `/results` route, driven by the active search, first saved search, or a Tokyo
-  Spring Trip fallback, with mock route detail and normalized itinerary data for
-  cash benchmark cards. The Results UI now handles unavailable cash benchmarks
+  `/results` route through the app-owned `POST /api/search/flights` route,
+  driven by the active search, first saved search, or a Tokyo Spring Trip
+  fallback, with mock route detail and normalized itinerary data for cash
+  benchmark cards. The Results UI now handles unavailable cash benchmarks
   without inventing a fallback fare and keeps award results usable when cash
-  provider data is empty or unavailable.
+  provider data is empty or unavailable. The browser no longer imports or calls
+  provider orchestration directly.
 - Covered by unit tests: mock cash provider envelope output, provider status
   combination, provider-exception envelope handling, mock cash option metadata,
   cash benchmark use in cents-per-point calculations through the scoring
-  helpers, active-search selection priority, and route-detail duration/summary
+  helpers, app-owned search API route responses, client API helper failure
+  handling, active-search selection priority, and route-detail duration/summary
   formatting.
 - Remaining: multiple cash options, manual cash entry, Duffel/Amadeus-style
   live provider integration, and production freshness scoring.
@@ -1174,14 +1213,16 @@ Current implementation status as of June 12, 2026:
 - Completed: award flight provider interface returning typed provider envelopes,
   real-provider-ready award result metadata types, mock award provider envelope
   metadata/messages, deterministic mock award options for the real `/results`
-  route, including Tokyo-like Air Canada Aeroplan, Virgin Atlantic Flying Club,
-  and United MileagePlus examples, generic route fallback options, route detail
-  and normalized itinerary data, transfer-required display details, and mock
-  result filters. The Results UI now handles no award provider data, partial
-  provider failures, rate limits, unsupported routes, and stale source cautions
-  without showing fake award recommendations.
+  route via `POST /api/search/flights`, including Tokyo-like Air Canada
+  Aeroplan, Virgin Atlantic Flying Club, and United MileagePlus examples,
+  generic route fallback options, route detail and normalized itinerary data,
+  transfer-required display details, and mock result filters. The Results UI now
+  handles no award provider data, partial provider failures, rate limits,
+  unsupported routes, and stale source cautions without showing fake award
+  recommendations.
 - Covered by unit tests: mock award provider envelope output, provider status
   combination, provider-exception envelope handling, mock award option metadata,
+  app-owned search API route responses, client API helper failure handling,
   award option scoring against wallet balances and transfer partners,
   transfer-path display derivation, and mock result filter behavior.
 - Remaining: manual award entry, real award availability providers, production

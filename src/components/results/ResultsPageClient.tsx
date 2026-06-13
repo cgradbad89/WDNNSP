@@ -26,9 +26,8 @@ import { SearchSummaryStrip } from "@/components/results/SearchSummaryStrip";
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
 import { TRANSFER_PARTNERS } from "@/data/transferPartners";
 import { expandAirportCode } from "@/lib/airports/groups";
+import { searchFlightsViaApi } from "@/lib/providers/client";
 import { getFlightSearchDisplayState } from "@/lib/providers/display";
-import { mockFlightSearchProviderSet } from "@/lib/providers/mock";
-import { searchFlightsWithProviders } from "@/lib/providers/search";
 import type { FlightSearchEnvelope } from "@/lib/providers/types";
 import {
   applyResultsFilters,
@@ -250,7 +249,7 @@ export function ResultsPageClient(): JSX.Element {
 
     let isCurrent = true;
 
-    searchFlightsWithProviders(selectedSearch, mockFlightSearchProviderSet)
+    searchFlightsViaApi(selectedSearch)
       .then((results) => {
         if (isCurrent) {
           setProviderError(undefined);
@@ -260,10 +259,13 @@ export function ResultsPageClient(): JSX.Element {
           });
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (isCurrent) {
           setProviderError({
-            message: "Mock flight results could not be loaded.",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Mock flight results could not be loaded.",
             searchId: selectedSearch.id,
           });
         }
