@@ -7,8 +7,13 @@ import {
   invalidSearchError,
   validateFlightSearchApiRequestBody,
 } from "@/lib/providers/apiValidation";
-import { mockFlightSearchProviderSet } from "@/lib/providers/mock";
+import {
+  mockAwardFlightProvider,
+  mockCashFlightProvider,
+} from "@/lib/providers/mock";
 import { searchFlightsWithProviders } from "@/lib/providers/search";
+import { travelpayoutsCashFlightProvider } from "@/lib/providers/travelpayouts";
+import type { FlightSearchProviderSet } from "@/lib/providers/types";
 
 const searchFailedError: FlightSearchApiErrorResponse["error"] = {
   code: "SEARCH_FAILED",
@@ -20,6 +25,23 @@ function jsonResponse(
   status: number,
 ): Response {
   return Response.json(body, { status });
+}
+
+function isLiveCashProviderEnabled(): boolean {
+  return (
+    process.env.ENABLE_LIVE_CASH_PROVIDER === "true" &&
+    Boolean(process.env.TRAVELPAYOUTS_TOKEN)
+  );
+}
+
+// Award side is untouched by this session: it always uses the mock provider.
+function getFlightSearchProviderSet(): FlightSearchProviderSet {
+  return {
+    cashProvider: isLiveCashProviderEnabled()
+      ? travelpayoutsCashFlightProvider
+      : mockCashFlightProvider,
+    awardProvider: mockAwardFlightProvider,
+  };
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -52,7 +74,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const envelope = await searchFlightsWithProviders(
       validation.search,
-      mockFlightSearchProviderSet,
+      getFlightSearchProviderSet(),
     );
     const response: FlightSearchApiSuccessResponse = {
       ok: true,

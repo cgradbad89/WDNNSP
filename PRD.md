@@ -289,7 +289,7 @@ Cash flight result fields:
 ```ts
 type CashFlightOption = {
   id: string;
-  source: "duffel" | "amadeus" | "manual" | "mock";
+  source: "duffel" | "amadeus" | "travelpayouts" | "manual" | "mock";
   provider?: ProviderResultReference;
   freshness?: FreshnessMetadata;
   airline: string;
@@ -605,7 +605,13 @@ This data should be easy to update.
 
 Cash flight data should come from a paid flight search provider or manual/mock data during development.
 
-Potential providers:
+Live provider: **Travelpayouts Data API** (`prices/cheap` endpoint), chosen
+over Duffel because Duffel has no viable free tier for a search-only,
+non-booking app — its free allowance only accrues per confirmed booking, and
+WDNNSP never books. Travelpayouts offers free registration and no
+minimum-traffic gate on the Data API endpoints used here.
+
+Other potential providers:
 
 - Duffel
 - Amadeus
@@ -615,17 +621,48 @@ The app should abstract the provider behind a service layer so the provider can 
 
 Current provider interfaces return `ProviderResultEnvelope<CashFlightOption>`
 instead of raw arrays. The envelope carries `status`, `data`, provider
-metadata, and messages while the app remains mock-backed.
+metadata, and messages.
 
 The browser calls the app-owned `POST /api/search/flights` route for flight
-search results. That route currently invokes the mock cash and award providers
-server-side and returns a `FlightSearchEnvelope`. This prepares the app for
-future secure live-provider integration without exposing provider secrets or
-raw provider payloads to the browser. No live cash provider is implemented yet.
+search results. That route selects the cash provider server-side: when
+`ENABLE_LIVE_CASH_PROVIDER === "true"` and `TRAVELPAYOUTS_TOKEN` is set, it
+uses the live `src/lib/providers/travelpayouts.ts` client; otherwise it falls
+back silently to the mock cash provider. The award side is unchanged and
+always uses the mock award provider. This keeps provider secrets and raw
+provider payloads out of the browser.
+
+**Travelpayouts client (`src/lib/providers/travelpayouts.ts`):**
+
+- Calls `GET https://api.travelpayouts.com/v1/prices/cheap` with `origin`,
+  `destination` (first code of each `SavedSearch` array — airport-group
+  multi-code expansion is not yet split into multiple provider calls),
+  `depart_date`, optional `return_date`, and `currency=usd`. The token is
+  sent via the `X-Access-Token` header, never as a query param.
+- The endpoint returns cached, aggregated prices, not a live per-search shop
+  against airline inventory, and it does not confirm arrival time, duration,
+  stop count, or cabin class. Mapped `CashFlightOption` results set
+  `durationMinutes: 0`, `arrivalDateTime` equal to `departureDateTime`, and
+  `stops: 0` as explicit placeholders (flagged via a `travelpayouts_partial_itinerary`
+  limitation) and `cabin` to the requested search cabin, since the provider
+  does not confirm it. This needs product-owner review before the Results UI
+  leans on those fields for a live-cash card.
+- Status mapping: a successful response with at least one result maps to
+  `status: "stale"` (not `"success"`) because this endpoint is always
+  cache-based — consistent with the existing `"stale"` convention in
+  `src/lib/providers/status.ts` and `src/lib/providers/display.ts`, which
+  already treats `"stale"` as usable-but-unverified data. An empty result set
+  maps to `"no_results"`. HTTP 401/403 map to `"error"` with a generic
+  message only (no token or raw response body). HTTP 429 maps to
+  `"rate_limited"`. Any other network/5xx failure maps to `"error"`.
+- Env vars: `TRAVELPAYOUTS_TOKEN` (server-only, never `NEXT_PUBLIC_`) and
+  `ENABLE_LIVE_CASH_PROVIDER` (`"true"`/`"false"`), documented with empty
+  placeholders in `.env.example`.
 
 Cash result objects also include optional real-provider-ready metadata:
 provider references, ISO-like money values, freshness, itinerary, fare, baggage,
 and limitation fields. Existing scoring still uses `cashPriceUsd`.
+
+`CashFlightOption.source` is `"duffel" | "amadeus" | "travelpayouts" | "manual" | "mock"`.
 
 ---
 
@@ -1169,7 +1206,7 @@ Exit criteria:
 - App can show cash benchmark options for a route.
 - App can use cash price in value calculations.
 
-Current implementation status as of June 12, 2026:
+Current implementation status as of August 11, 2026:
 
 - Completed: cash flight provider interface returning typed provider envelopes,
   real-provider-ready cash result metadata types, mock cash provider envelope
@@ -1180,15 +1217,25 @@ Current implementation status as of June 12, 2026:
   benchmark cards. The Results UI now handles unavailable cash benchmarks
   without inventing a fallback fare and keeps award results usable when cash
   provider data is empty or unavailable. The browser no longer imports or calls
-  provider orchestration directly.
+  provider orchestration directly. A live Travelpayouts cash provider
+  (`src/lib/providers/travelpayouts.ts`) is now implemented and wired into
+  `POST /api/search/flights` behind the `ENABLE_LIVE_CASH_PROVIDER` +
+  `TRAVELPAYOUTS_TOKEN` env-var toggle, with a silent mock-data fallback when
+  either is unset. See section 7.3 for the field-mapping and status-mapping
+  details.
 - Covered by unit tests: mock cash provider envelope output, provider status
   combination, provider-exception envelope handling, mock cash option metadata,
   cash benchmark use in cents-per-point calculations through the scoring
   helpers, app-owned search API route responses, client API helper failure
-  handling, active-search selection priority, and route-detail duration/summary
-  formatting.
-- Remaining: multiple cash options, manual cash entry, Duffel/Amadeus-style
-  live provider integration, and production freshness scoring.
+  handling, active-search selection priority, route-detail duration/summary
+  formatting, and the Travelpayouts client's field mapping/flattening,
+  success-vs-stale status decision, no-results/401/403/429/network-failure
+  status mapping, and the route's mock-vs-live provider selection for both
+  toggle states.
+- Remaining: multiple cash options, manual cash entry, Amadeus-style live
+  provider integration, production freshness scoring, and Results UI
+  adjustments for live-provider itinerary fields Travelpayouts does not supply
+  (arrival time, duration, stop count, cabin).
 
 ---
 
@@ -1429,7 +1476,12 @@ Example test cases:
 
 These do not block Phase 1.
 
-1. Which cash flight API should be used first?
+1. ~~Which cash flight API should be used first?~~ Answered: Travelpayouts
+   Data API (see section 7.3), gated behind `ENABLE_LIVE_CASH_PROVIDER`. Open
+   follow-up: the `prices/cheap` endpoint doesn't confirm arrival time,
+   duration, stop count, or cabin — product owner should decide whether/how
+   the Results UI should handle those placeholder fields for live cash
+   results.
 2. Is Seats.aero API access available and affordable?
 3. Should John and his dad share a combined wallet view?
 4. Should searches support flexible date grids in MVP or v2?

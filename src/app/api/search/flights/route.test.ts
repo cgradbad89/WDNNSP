@@ -12,6 +12,16 @@ vi.mock("@/lib/providers/search", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/providers/travelpayouts", async (importOriginal) => {
+  const mod = await importOriginal<
+    typeof import("@/lib/providers/travelpayouts")
+  >();
+  return {
+    ...mod,
+    searchTravelpayoutsCashFlights: vi.fn(),
+  };
+});
+
 const validSearch: SavedSearch = {
   id: "search-1",
   userId: "local-user",
@@ -209,5 +219,92 @@ describe("POST /api/search/flights", () => {
     expect(response.status).toBe(400);
     expect(body).toMatchObject({ ok: false, error: { code: "INVALID_SEARCH" } });
     expect(searchModule.searchFlightsWithProviders).not.toHaveBeenCalled();
+  });
+
+  describe("live cash provider toggle", () => {
+    const originalEnableFlag = process.env.ENABLE_LIVE_CASH_PROVIDER;
+    const originalToken = process.env.TRAVELPAYOUTS_TOKEN;
+
+    afterEach(() => {
+      if (originalEnableFlag === undefined) {
+        delete process.env.ENABLE_LIVE_CASH_PROVIDER;
+      } else {
+        process.env.ENABLE_LIVE_CASH_PROVIDER = originalEnableFlag;
+      }
+
+      if (originalToken === undefined) {
+        delete process.env.TRAVELPAYOUTS_TOKEN;
+      } else {
+        process.env.TRAVELPAYOUTS_TOKEN = originalToken;
+      }
+    });
+
+    it("uses the mock cash provider when the flag is off", async () => {
+      process.env.ENABLE_LIVE_CASH_PROVIDER = "false";
+      process.env.TRAVELPAYOUTS_TOKEN = "test-token";
+      vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
+        cash: createSuccessEnvelope(),
+        awards: createSuccessEnvelope(),
+        overallStatus: "success",
+        messages: [],
+      });
+
+      await POST(createRequest({ search: validSearch }));
+
+      const providers = vi.mocked(searchModule.searchFlightsWithProviders).mock
+        .calls[0][1];
+      expect(providers.cashProvider.id).toBe("mock-cash");
+    });
+
+    it("uses the mock cash provider when the token is missing, even if the flag is on", async () => {
+      process.env.ENABLE_LIVE_CASH_PROVIDER = "true";
+      delete process.env.TRAVELPAYOUTS_TOKEN;
+      vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
+        cash: createSuccessEnvelope(),
+        awards: createSuccessEnvelope(),
+        overallStatus: "success",
+        messages: [],
+      });
+
+      await POST(createRequest({ search: validSearch }));
+
+      const providers = vi.mocked(searchModule.searchFlightsWithProviders).mock
+        .calls[0][1];
+      expect(providers.cashProvider.id).toBe("mock-cash");
+    });
+
+    it("uses the live Travelpayouts cash provider when the flag is on and a token is set", async () => {
+      process.env.ENABLE_LIVE_CASH_PROVIDER = "true";
+      process.env.TRAVELPAYOUTS_TOKEN = "test-token";
+      vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
+        cash: createSuccessEnvelope(),
+        awards: createSuccessEnvelope(),
+        overallStatus: "success",
+        messages: [],
+      });
+
+      await POST(createRequest({ search: validSearch }));
+
+      const providers = vi.mocked(searchModule.searchFlightsWithProviders).mock
+        .calls[0][1];
+      expect(providers.cashProvider.id).toBe("travelpayouts");
+    });
+
+    it("always keeps the award provider on mock regardless of the cash toggle", async () => {
+      process.env.ENABLE_LIVE_CASH_PROVIDER = "true";
+      process.env.TRAVELPAYOUTS_TOKEN = "test-token";
+      vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
+        cash: createSuccessEnvelope(),
+        awards: createSuccessEnvelope(),
+        overallStatus: "success",
+        messages: [],
+      });
+
+      await POST(createRequest({ search: validSearch }));
+
+      const providers = vi.mocked(searchModule.searchFlightsWithProviders).mock
+        .calls[0][1];
+      expect(providers.awardProvider.id).toBe("mock-awards");
+    });
   });
 });

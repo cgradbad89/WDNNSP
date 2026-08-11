@@ -31,7 +31,7 @@ export interface RouteDetail {
 
 export interface CashFlightOption {
   id: string;
-  source: "duffel" | "amadeus" | "manual" | "mock";
+  source: "duffel" | "amadeus" | "travelpayouts" | "manual" | "mock";
   provider?: ProviderResultReference;
   freshness?: FreshnessMetadata;
   airline: string;
