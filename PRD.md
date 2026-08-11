@@ -1318,6 +1318,12 @@ Exit criteria:
 
 ## 15. Recommendation Rules
 
+### Domain logic
+
+- Point sufficiency checks aggregate balances across all eligible transfer currencies rather than evaluating each currency independently.
+- `TransferBalance` carries `estimatedTransferTime` through to the recommendation output.
+- Transfer ratio math floors to whole points — partial/fractional point amounts are never shown or recommended.
+
 The app should produce human-readable explanations.
 
 Example explanations:
