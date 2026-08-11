@@ -129,4 +129,14 @@ describe("transfer partner lookup", () => {
     expect(getTransferOptionsFromWallet(renamedAccounts, partners)).toHaveLength(1);
     expect(getTransferOptionsFromWallet(legacyAccounts, partners)).toHaveLength(1);
   });
+
+  it("returns an empty array gracefully when no transfer path exists", () => {
+    expect(getTransferPartnersForProgram("Unknown Program", partners)).toEqual([]);
+    expect(getTransferOptionsFromWallet([], partners)).toEqual([]);
+  });
+
+  it("attaches and passes through transfer time metadata without dropping it", () => {
+    const result = getTransferPartnersForProgram("Chase Ultimate Rewards", partners);
+    expect(result[0].estimatedTransferTime).toBe("instant");
+  });
 });

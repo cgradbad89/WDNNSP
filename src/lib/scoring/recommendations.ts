@@ -35,6 +35,7 @@ export const TRANSFER_WARNING =
 type TransferBalance = {
   fromProgram: string;
   convertedBalance: number;
+  estimatedTransferTime?: string;
 };
 
 type PointsFit = {
@@ -171,13 +172,14 @@ function getTransferBalances(
       continue;
     }
 
-    const convertedBalance = sourceBalance * partner.transferRatio;
+    const convertedBalance = Math.floor(sourceBalance * partner.transferRatio);
     const currentBalance = transferBalances.get(partner.fromProgramId);
 
     if (!currentBalance || convertedBalance > currentBalance.convertedBalance) {
       transferBalances.set(partner.fromProgramId, {
         fromProgram: partner.fromProgram,
         convertedBalance,
+        estimatedTransferTime: partner.estimatedTransferTime,
       });
     }
   }
@@ -207,15 +209,18 @@ function getPointsFit(
       transferBalance.convertedBalance + directBalance >=
       awardOption.pointsRequired,
   );
+  const totalReachableBalance = transferBalances.reduce(
+    (sum, balance) => sum + balance.convertedBalance,
+    directBalance
+  );
   const bestReachableBalance = Math.max(
     directBalance,
-    ...transferBalances.map(
-      (transferBalance) => transferBalance.convertedBalance + directBalance,
-    ),
+    totalReachableBalance,
   );
   const hasEnoughPoints =
     directBalance >= awardOption.pointsRequired ||
-    sufficientTransferBalances.length > 0;
+    sufficientTransferBalances.length > 0 ||
+    totalReachableBalance >= awardOption.pointsRequired;
   const pointsFitScore = hasEnoughPoints
     ? 100
     : bestReachableBalance >= awardOption.pointsRequired / 2

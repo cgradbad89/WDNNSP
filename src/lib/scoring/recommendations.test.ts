@@ -320,4 +320,109 @@ describe("scoreAwardOptions", () => {
     expect(idResult.rankedAwardOptions[0].score.pointsFitScore).toBe(100);
     expect(fallbackResult.rankedAwardOptions[0].score.pointsFitScore).toBe(100);
   });
+
+  it("has exact balance match sufficiency", () => {
+    const result = scoreAwardOptions(
+      [createAwardOption({ id: "exact", airlineProgram: "United MileagePlus", pointsRequired: 60000 })],
+      cashOption,
+      accounts,
+      transferPartners,
+    );
+    expect(result.rankedAwardOptions[0].score.pointsFitScore).toBe(100);
+  });
+
+  it("fails sufficiency by 1 point", () => {
+    const result = scoreAwardOptions(
+      [createAwardOption({ id: "short", airlineProgram: "United MileagePlus", pointsRequired: 190001 })],
+      cashOption,
+      accounts,
+      transferPartners,
+    );
+    expect(result.rankedAwardOptions[0].recommendationLabel).toBe("not_enough_points");
+  });
+
+  it("is sufficient only after a hypothetical transfer", () => {
+    const result = scoreAwardOptions(
+      [createAwardOption({ id: "transfer-needed", airlineProgram: "Virgin Atlantic Flying Club", pointsRequired: 100000 })],
+      cashOption,
+      accounts,
+      transferPartners,
+    );
+    expect(result.rankedAwardOptions[0].score.pointsFitScore).toBe(100);
+    expect(result.rankedAwardOptions[0].score.transferSimplicityScore).toBeLessThan(100);
+  });
+
+  it("handles multiple currencies combined to cover one need", () => {
+    const amexAccount = {
+      id: "account-amex",
+      userId: "local",
+      programId: "american-express-membership-rewards",
+      programName: "American Express Membership Rewards",
+      programType: "credit_card" as const,
+      balance: 10000,
+      lastUpdatedAt: "2026",
+    };
+    const multiTransferPartners = [
+      ...transferPartners,
+      {
+        id: "amex-virgin",
+        fromProgramId: "american-express-membership-rewards",
+        toProgramId: "virgin-atlantic-flying-club",
+        fromProgram: "American Express Membership Rewards",
+        toProgram: "Virgin Atlantic Flying Club",
+        transferRatio: 1,
+        estimatedTransferTime: "same_day" as const,
+        isActive: true,
+      }
+    ];
+    const result = scoreAwardOptions(
+      [createAwardOption({ id: "multi", airlineProgram: "Virgin Atlantic Flying Club", pointsRequired: 140000 })],
+      cashOption,
+      [accounts[0], amexAccount], // chase 130k + amex 10k
+      multiTransferPartners,
+    );
+    expect(result.rankedAwardOptions[0].score.pointsFitScore).toBe(100);
+    expect(result.rankedAwardOptions[0].score.transferSimplicityScore).toBe(40); // multiple transfers
+  });
+
+  it("scores transfer simplicity for non-1:1 ratio partner", () => {
+    const amexAccount = {
+      id: "account-amex",
+      userId: "local",
+      programId: "american-express-membership-rewards",
+      programName: "American Express Membership Rewards",
+      programType: "credit_card" as const,
+      balance: 100000,
+      lastUpdatedAt: "2026",
+    };
+    const emiratesPartner = {
+      id: "amex-emirates",
+      fromProgramId: "american-express-membership-rewards",
+      toProgramId: "emirates-skywards",
+      fromProgram: "American Express Membership Rewards",
+      toProgram: "Emirates Skywards",
+      transferRatio: 0.8,
+      estimatedTransferTime: "unknown" as const,
+      isActive: true,
+    };
+    const result = scoreAwardOptions(
+      [createAwardOption({ id: "non11", airlineProgram: "Emirates Skywards", pointsRequired: 80000 })],
+      cashOption,
+      [amexAccount],
+      [emiratesPartner],
+    );
+    expect(result.rankedAwardOptions[0].score.pointsFitScore).toBe(100); // 100k * 0.8 = 80k
+  });
+
+  it("scores transfer simplicity when no partner exists", () => {
+    const result = scoreAwardOptions(
+      [createAwardOption({ id: "no-partner", airlineProgram: "Unknown Airline", pointsRequired: 1000 })],
+      cashOption,
+      accounts,
+      transferPartners,
+    );
+    expect(result.rankedAwardOptions[0].recommendationLabel).toBe("not_enough_points");
+    expect(result.rankedAwardOptions[0].score.transferSimplicityScore).toBe(0);
+  });
 });
+
