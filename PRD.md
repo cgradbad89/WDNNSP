@@ -333,10 +333,12 @@ MVP preferred approach:
 - If no award API is available at first, support mock/manual award data so the app logic can still be built and tested.
 - Do not let award API setup block the wallet, search form, scoring, or mock-result experience.
 - Provider calls should return typed result envelopes with provider status,
-  freshness metadata, and user-safe messages. The current implementation still
-  uses mock award data only; live provider integration remains deferred.
+  freshness metadata, and user-safe messages. Live Seats.aero award data is
+  now available behind `ENABLE_LIVE_AWARD_PROVIDER` + `SEATS_AERO_API_KEY`;
+  see 7.4 for the client details. Mock award data remains the default and the
+  silent fallback when the flag or key is missing.
 
-Seats.aero is a candidate because its developer documentation describes APIs for award travel data and a bulk availability endpoint for retrieving availability by mileage program, cabin, and date range. Actual API access, limits, cost, and coverage need to be confirmed separately before integration.
+Seats.aero was chosen for live award data. Its Cached Search endpoint covers availability by mileage program, cabin, and date range, matching a Pro-tier account's access. See 7.4 for the confirmed endpoint, auth, and field details, and the Live Search/Bulk Availability scope boundary.
 
 Award result fields:
 
@@ -499,8 +501,11 @@ Results provider UX states:
 - `/results` should include a clear planning-only/not-booking-engine
   disclaimer while preserving contextual transfer caution near transfer-required
   details instead of a full prominent transfer-warning banner.
-- Current implementation remains mock-backed only. Live Amadeus, Duffel,
-  Seats.aero, and other provider integrations remain deferred.
+- Live Travelpayouts cash and live Seats.aero award data are available behind
+  `ENABLE_LIVE_CASH_PROVIDER`/`ENABLE_LIVE_AWARD_PROVIDER` env flags (see 7.3,
+  7.4); the app falls back to mock data silently when a flag or key is
+  missing. Live Amadeus, Duffel, and Seats.aero Live Search/Bulk Availability
+  remain deferred.
 
 ---
 
@@ -627,9 +632,9 @@ The browser calls the app-owned `POST /api/search/flights` route for flight
 search results. That route selects the cash provider server-side: when
 `ENABLE_LIVE_CASH_PROVIDER === "true"` and `TRAVELPAYOUTS_TOKEN` is set, it
 uses the live `src/lib/providers/travelpayouts.ts` client; otherwise it falls
-back silently to the mock cash provider. The award side is unchanged and
-always uses the mock award provider. This keeps provider secrets and raw
-provider payloads out of the browser.
+back silently to the mock cash provider. The award provider is selected the
+same way — see 7.4. This keeps provider secrets and raw provider payloads out
+of the browser.
 
 **Travelpayouts client (`src/lib/providers/travelpayouts.ts`):**
 
@@ -670,21 +675,71 @@ and limitation fields. Existing scoring still uses `cashPriceUsd`.
 
 Award availability should come from a dedicated award data provider where possible.
 
-Potential provider:
-
-- Seats.aero API
+Live provider: **Seats.aero Partner API**, **Cached Search** endpoint only.
+This project's Seats.aero account is Pro-tier, which can only call Cached
+Search and Bulk Availability — the separate **Live Search** endpoint requires
+its own commercial agreement and must never be called from this app.
 
 The app should also support manual/mock award data during development.
 
 The app must not rely on airline scraping for MVP.
 
 Current provider interfaces return `ProviderResultEnvelope<AwardFlightOption>`
-instead of raw arrays. The envelope prepares the app for future live-provider
-loading, error, no-results, unsupported-route, rate-limit, and stale-data
-states, but no Seats.aero or other live award provider is implemented yet.
-The browser receives award provider results only through the app-owned
-`POST /api/search/flights` route; live provider credentials and raw provider
-responses must stay server-only.
+instead of raw arrays. The envelope carries `status`, `data`, provider
+metadata, and messages, and prepares the app for live-provider loading,
+error, no-results, unsupported-route, rate-limit, and stale-data states.
+
+The browser calls the app-owned `POST /api/search/flights` route for flight
+search results. That route selects the award provider server-side: when
+`ENABLE_LIVE_AWARD_PROVIDER === "true"` and `SEATS_AERO_API_KEY` is set, it
+uses the live `src/lib/providers/seatsAero.ts` client; otherwise it falls back
+silently to the mock award provider. Live provider credentials and raw
+provider responses stay server-only and are never sent to the browser.
+
+**Seats.aero client (`src/lib/providers/seatsAero.ts`):**
+
+- Calls `GET https://seats.aero/partnerapi/search` (Cached Search) with
+  `origin_airport`/`destination_airport` (comma-joined `SavedSearch` codes),
+  `start_date`/`end_date` (both set to `search.departDate` — the return leg
+  and `flexibleDays` do not widen the queried date range yet), and
+  `only_direct_flights=true` when `search.maxStops === 0`. The API key is
+  sent via the `Partner-Authorization` header (the raw key, no `Bearer`
+  prefix) — confirmed against live docs, not the standard
+  `Authorization: Bearer` header.
+- One Seats.aero result can report availability in up to four cabins
+  (`YAvailable`/`WAvailable`/`JAvailable`/`FAvailable`) at once. Each
+  available cabin is mapped to its own separate `AwardFlightOption` with that
+  cabin's own `YMileageCost`/etc. mileage cost (multiplied by passenger
+  count) — never collapsed to a single cabin.
+- Seats.aero Cached Search reports date-level availability, not scheduled
+  flight times, taxes/fees, exact stop counts (only a per-cabin nonstop
+  boolean), or transfer-partner mapping. Mapped `AwardFlightOption` results
+  set `departureDateTime`/`arrivalDateTime` to midnight UTC on the reported
+  date, `taxesAndFeesUsd: 0`, `stops: 0`, and `transferSources: []` as
+  explicit placeholders (flagged via limitations), matching the placeholder
+  convention already used in `src/lib/providers/travelpayouts.ts`. This needs
+  product-owner review before the Results UI leans on those fields for a live
+  award card.
+- Status mapping: any available cabin found maps to `status: "success"`
+  (this session's live Cached Search response has no per-result freshness
+  field equivalent to a documented "computed last seen" timestamp — only a
+  per-result `UpdatedAt` — so, unlike the Travelpayouts `"stale"` convention,
+  successful results are not downgraded to `"stale"`; this is a
+  product-owner-reviewable assumption, not a confirmed Seats.aero data-quality
+  guarantee). An empty result set, or a result set where no cabin is
+  available, maps to `"no_results"`. HTTP 401 maps to `"error"` with a
+  generic message only (no API key or raw response body). HTTP 429 maps to
+  `"rate_limited"`. HTTP 404 maps to `"no_results"` (Seats.aero docs: 404
+  covers both no-results and invalid-availability-ID). Any other network/5xx
+  failure maps to `"error"`.
+- Env vars: `SEATS_AERO_API_KEY` (server-only, never `NEXT_PUBLIC_`) and
+  `ENABLE_LIVE_AWARD_PROVIDER` (`"true"`/`"false"`), documented with empty
+  placeholders in `.env.example`.
+- Not implemented in this session: Bulk Availability endpoint, Get Trips
+  (flight-level segment detail), pagination beyond the first page, and
+  mapping Seats.aero's mileage-program `Source` to this app's transfer-partner
+  database (`transferSources` is left empty for live results pending that
+  mapping).
 
 Award result objects also include optional real-provider-ready metadata:
 provider references, ISO-like fee money values, freshness, availability status,
@@ -1482,7 +1537,18 @@ These do not block Phase 1.
    duration, stop count, or cabin — product owner should decide whether/how
    the Results UI should handle those placeholder fields for live cash
    results.
-2. Is Seats.aero API access available and affordable?
+2. ~~Is Seats.aero API access available and affordable?~~ Answered: yes, a
+   Pro-tier account is in use, integrated via Cached Search (see section 7.4),
+   gated behind `ENABLE_LIVE_AWARD_PROVIDER`. Open follow-ups: Cached Search
+   doesn't confirm scheduled flight times, taxes/fees, exact stop counts, or
+   which transferable point programs map to a given mileage program —
+   product owner should decide whether/how the Results UI should handle
+   those placeholder fields, and whether a mileage-program-to-transfer-partner
+   mapping is worth building. Also open: whether the always-`"success"`
+   status mapping for live Cached Search results (vs. Travelpayouts'
+   always-`"stale"`) is the right call, since Cached Search has no
+   documented per-result freshness guarantee beyond an `UpdatedAt`
+   timestamp.
 3. Should John and his dad share a combined wallet view?
 4. Should searches support flexible date grids in MVP or v2?
 5. Should the app support transfer bonuses in v1 or v2?

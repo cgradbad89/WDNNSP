@@ -11,6 +11,7 @@ import {
   mockAwardFlightProvider,
   mockCashFlightProvider,
 } from "@/lib/providers/mock";
+import { seatsAeroAwardFlightProvider } from "@/lib/providers/seatsAero";
 import { searchFlightsWithProviders } from "@/lib/providers/search";
 import { travelpayoutsCashFlightProvider } from "@/lib/providers/travelpayouts";
 import type { FlightSearchProviderSet } from "@/lib/providers/types";
@@ -34,13 +35,21 @@ function isLiveCashProviderEnabled(): boolean {
   );
 }
 
-// Award side is untouched by this session: it always uses the mock provider.
+function isLiveAwardProviderEnabled(): boolean {
+  return (
+    process.env.ENABLE_LIVE_AWARD_PROVIDER === "true" &&
+    Boolean(process.env.SEATS_AERO_API_KEY)
+  );
+}
+
 function getFlightSearchProviderSet(): FlightSearchProviderSet {
   return {
     cashProvider: isLiveCashProviderEnabled()
       ? travelpayoutsCashFlightProvider
       : mockCashFlightProvider,
-    awardProvider: mockAwardFlightProvider,
+    awardProvider: isLiveAwardProviderEnabled()
+      ? seatsAeroAwardFlightProvider
+      : mockAwardFlightProvider,
   };
 }
 

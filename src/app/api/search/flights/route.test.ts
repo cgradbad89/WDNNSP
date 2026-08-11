@@ -22,6 +22,14 @@ vi.mock("@/lib/providers/travelpayouts", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/providers/seatsAero", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/providers/seatsAero")>();
+  return {
+    ...mod,
+    searchSeatsAeroAwardFlights: vi.fn(),
+  };
+});
+
 const validSearch: SavedSearch = {
   id: "search-1",
   userId: "local-user",
@@ -290,7 +298,7 @@ describe("POST /api/search/flights", () => {
       expect(providers.cashProvider.id).toBe("travelpayouts");
     });
 
-    it("always keeps the award provider on mock regardless of the cash toggle", async () => {
+    it("keeps the award provider on mock when only the cash toggle is on", async () => {
       process.env.ENABLE_LIVE_CASH_PROVIDER = "true";
       process.env.TRAVELPAYOUTS_TOKEN = "test-token";
       vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
@@ -305,6 +313,93 @@ describe("POST /api/search/flights", () => {
       const providers = vi.mocked(searchModule.searchFlightsWithProviders).mock
         .calls[0][1];
       expect(providers.awardProvider.id).toBe("mock-awards");
+    });
+  });
+
+  describe("live award provider toggle", () => {
+    const originalEnableFlag = process.env.ENABLE_LIVE_AWARD_PROVIDER;
+    const originalKey = process.env.SEATS_AERO_API_KEY;
+
+    afterEach(() => {
+      if (originalEnableFlag === undefined) {
+        delete process.env.ENABLE_LIVE_AWARD_PROVIDER;
+      } else {
+        process.env.ENABLE_LIVE_AWARD_PROVIDER = originalEnableFlag;
+      }
+
+      if (originalKey === undefined) {
+        delete process.env.SEATS_AERO_API_KEY;
+      } else {
+        process.env.SEATS_AERO_API_KEY = originalKey;
+      }
+    });
+
+    it("uses the mock award provider when the flag is off", async () => {
+      process.env.ENABLE_LIVE_AWARD_PROVIDER = "false";
+      process.env.SEATS_AERO_API_KEY = "test-key";
+      vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
+        cash: createSuccessEnvelope(),
+        awards: createSuccessEnvelope(),
+        overallStatus: "success",
+        messages: [],
+      });
+
+      await POST(createRequest({ search: validSearch }));
+
+      const providers = vi.mocked(searchModule.searchFlightsWithProviders).mock
+        .calls[0][1];
+      expect(providers.awardProvider.id).toBe("mock-awards");
+    });
+
+    it("uses the mock award provider when the key is missing, even if the flag is on", async () => {
+      process.env.ENABLE_LIVE_AWARD_PROVIDER = "true";
+      delete process.env.SEATS_AERO_API_KEY;
+      vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
+        cash: createSuccessEnvelope(),
+        awards: createSuccessEnvelope(),
+        overallStatus: "success",
+        messages: [],
+      });
+
+      await POST(createRequest({ search: validSearch }));
+
+      const providers = vi.mocked(searchModule.searchFlightsWithProviders).mock
+        .calls[0][1];
+      expect(providers.awardProvider.id).toBe("mock-awards");
+    });
+
+    it("uses the live Seats.aero award provider when the flag is on and a key is set", async () => {
+      process.env.ENABLE_LIVE_AWARD_PROVIDER = "true";
+      process.env.SEATS_AERO_API_KEY = "test-key";
+      vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
+        cash: createSuccessEnvelope(),
+        awards: createSuccessEnvelope(),
+        overallStatus: "success",
+        messages: [],
+      });
+
+      await POST(createRequest({ search: validSearch }));
+
+      const providers = vi.mocked(searchModule.searchFlightsWithProviders).mock
+        .calls[0][1];
+      expect(providers.awardProvider.id).toBe("seats-aero");
+    });
+
+    it("keeps the cash provider on mock when only the award toggle is on", async () => {
+      process.env.ENABLE_LIVE_AWARD_PROVIDER = "true";
+      process.env.SEATS_AERO_API_KEY = "test-key";
+      vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
+        cash: createSuccessEnvelope(),
+        awards: createSuccessEnvelope(),
+        overallStatus: "success",
+        messages: [],
+      });
+
+      await POST(createRequest({ search: validSearch }));
+
+      const providers = vi.mocked(searchModule.searchFlightsWithProviders).mock
+        .calls[0][1];
+      expect(providers.cashProvider.id).toBe("mock-cash");
     });
   });
 });
