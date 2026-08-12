@@ -763,9 +763,30 @@ and availability confidence.
 ### 7.5 Airport data
 
 Airport and airport group data can be static. Production `/search` and the
-`/results` edit-search drawer currently use curated static airport and
-metro-area data for autocomplete and validation; they do not use live airport
-APIs.
+`/results` edit-search drawer currently use static airport and metro-area
+data for autocomplete and validation; they do not use live airport APIs.
+
+`src/data/airports.ts` is generated (not hand-curated) from OurAirports'
+`airports.csv` (public domain / Unlicense — no attribution required) via
+`scripts/generate-airports.mjs` (`npm run data:airports`), covering every
+row with a non-empty `iata_code` — 9,053 airports as of the 2026-08-12
+refresh, up from a 28-airport hand-curated list that was missing major hubs
+(e.g. Denver). Regenerate by re-running the script; it fetches fresh CSV
+data and overwrites the file, so it is not run at request time or app build
+time. `city`/`country` come from OurAirports' `municipality` and
+`iso_country` (resolved to an English name via `Intl.DisplayNames`) — these
+are real-world municipality names and may differ from older curated
+assumptions (e.g. NRT's municipality is "Narita", not "Tokyo"; IAD's is
+"Dulles", not "Washington"). Time zone, latitude, and longitude are defined
+on the `Airport` type but are not currently populated by the generator
+(OurAirports has lat/long; time zone would need a separate coordinate-based
+lookup) — left for a future session if the app starts using them.
+
+The generated file includes airports whose OurAirports `type` is `closed`
+or `heliport` (100 of the 9,053, as of the 2026-08-12 refresh) — per the
+"any non-empty `iata_code` is searchable" criterion — rather than being
+silently filtered by type. Revisit if stale/heliport codes turn out to be
+confusing in the autocomplete.
 
 Data should include:
 
@@ -773,9 +794,9 @@ Data should include:
 - Airport name
 - City
 - Country
-- Time zone
-- Latitude
-- Longitude
+- Time zone (not yet populated by the generator)
+- Latitude (not yet populated by the generator)
+- Longitude (not yet populated by the generator)
 - Airport group membership where relevant
 
 ---
@@ -1253,7 +1274,7 @@ Current implementation status as of June 12, 2026:
 
 - Completed: approved design prototype route, revised run-search-first design reference, airport autocomplete design reference on `/design/search`, curated static airport data, production airport autocomplete on `/search` and the `/results` edit-search drawer, browser-persistent saved-search localStorage helpers, browser-persistent active-search localStorage helpers, signed-in Firestore saved-search sync, signed-in Firestore active-search sync, explicit local saved-search import to cloud, trip search validation helpers, real `/search` trip search form, active-search creation on submit, `/results` navigation after valid search, airport group expansion during validation, inline validation errors, unsupported legacy saved-search blocking on `/search`, supported-only saved-search fallback on `/results`, result-page save-search action, and compact dashboard saved-search summary.
 - Covered by unit tests: saved-search and active-search localStorage no-window and malformed JSON behavior, creation timestamps and IDs, update/delete helpers, Firestore search serializer and metadata helpers, search repository source selection and local saved/active wrappers, required search fields, supported airport and group validation, saved-search support-status validation, unsupported airport rejection, unsupported saved-search fallback skipping, autocomplete ranking and limits, round-trip return date rules, return date ordering, group-expanded origin/destination conflicts, passenger minimums, cabin validation, active-search selection priority, and non-negative max stops/flexible days.
-- Remaining: alerts, expanded airport coverage, optional local import cleanup, and live provider integrations.
+- Remaining: alerts, optional local import cleanup, and live provider integrations. Airport coverage was expanded from a 28-airport curated list to the full 9,053-airport OurAirports dataset (see 7.5).
 
 ---
 
