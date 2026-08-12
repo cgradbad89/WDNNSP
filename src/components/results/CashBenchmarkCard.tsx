@@ -34,6 +34,21 @@ function getRouteSummary(option: {
   return `${option.origin} -> ${option.destination}`;
 }
 
+function getCashBenchmarkDescription(
+  cashOption: ScoredCashOption,
+  passengers: number,
+): string {
+  const passengerLabel = `${formatNumber(passengers)} passenger${
+    passengers === 1 ? "" : "s"
+  }`;
+
+  if (cashOption.source === "travelpayouts") {
+    return `Cached Travelpayouts fare for ${passengerLabel}. This month-level benchmark is used to estimate redemption value after taxes and fees.`;
+  }
+
+  return `Deterministic mock fare for ${passengerLabel}. This benchmark is used to calculate redemption value after taxes and fees.`;
+}
+
 interface CashBenchmarkCardProps {
   cashOption: ScoredCashOption | undefined;
   hasAwardResults: boolean;
@@ -68,9 +83,7 @@ export function CashBenchmarkCard({
             {formatCurrency(cashOption.cashPriceUsd)}
           </p>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#637268]">
-            Deterministic mock fare for {formatNumber(passengers)} passenger
-            {passengers === 1 ? "" : "s"}. This benchmark is used to calculate
-            redemption value after taxes and fees.
+            {getCashBenchmarkDescription(cashOption, passengers)}
           </p>
         </div>
         <p className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-[#5d4c1d]">

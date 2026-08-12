@@ -1,3 +1,4 @@
+import { AIRPORT_GROUPS } from "@/data/airportGroups";
 import type {
   CashFlightProvider,
   ProviderMessage,
@@ -42,7 +43,8 @@ const staleDataMessage: ProviderMessage = {
 const noResultsMessage: ProviderMessage = {
   code: "travelpayouts_no_results",
   severity: "info",
-  message: "Travelpayouts did not return cached cash fares for this route.",
+  message:
+    "Travelpayouts did not return cached month-level cash fares for this route. Try another month or a major airport pair.",
 };
 
 const missingTokenMessage: ProviderMessage = {
@@ -104,16 +106,17 @@ function mapEntryToCashFlightOption({
   entry,
   destinationIata,
   index,
+  origin,
   search,
   searchedAt,
 }: {
   entry: TravelpayoutsCheapPriceEntry;
   destinationIata: string;
   index: string;
+  origin: string;
   search: SavedSearch;
   searchedAt: string;
 }): CashFlightOption {
-  const origin = search.originCodes[0] ?? "";
   const flightNumber = `${entry.airline}${entry.flight_number}`;
 
   return {
@@ -171,6 +174,7 @@ function mapEntryToCashFlightOption({
 
 function flattenCheapResponse(
   data: TravelpayoutsCheapResponse["data"],
+  origin: string,
   search: SavedSearch,
 ): CashFlightOption[] {
   const searchedAt = new Date().toISOString();
@@ -183,6 +187,7 @@ function flattenCheapResponse(
           entry,
           destinationIata,
           index,
+          origin,
           search,
           searchedAt,
         }),
@@ -191,6 +196,99 @@ function flattenCheapResponse(
   }
 
   return options;
+}
+
+function normalizeTravelpayoutsCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
+function getExactAirportGroupCode(codes: string[]): string | undefined {
+  const normalizedCodes = codes.map(normalizeTravelpayoutsCode).filter(Boolean);
+
+  if (normalizedCodes.length === 0) {
+    return undefined;
+  }
+
+  if (normalizedCodes.length === 1) {
+    return AIRPORT_GROUPS.find(
+      (group) => normalizeTravelpayoutsCode(group.code) === normalizedCodes[0],
+    )?.code;
+  }
+
+  return AIRPORT_GROUPS.find((group) => {
+    if (group.airportCodes.length !== normalizedCodes.length) {
+      return false;
+    }
+
+    return group.airportCodes.every((airportCode) =>
+      normalizedCodes.includes(normalizeTravelpayoutsCode(airportCode)),
+    );
+  })?.code;
+}
+
+function getTravelpayoutsRouteCodes(codes: string[]): string[] {
+  const routeCodes: string[] = [];
+
+  function addRouteCode(code: string): void {
+    const normalizedCode = normalizeTravelpayoutsCode(code);
+
+    if (!normalizedCode || routeCodes.includes(normalizedCode)) {
+      return;
+    }
+
+    routeCodes.push(normalizedCode);
+  }
+
+  const exactGroupCode = getExactAirportGroupCode(codes);
+
+  if (exactGroupCode) {
+    addRouteCode(exactGroupCode);
+  }
+
+  for (const code of codes) {
+    const normalizedCode = normalizeTravelpayoutsCode(code);
+    const airportGroup = AIRPORT_GROUPS.find(
+      (group) => normalizeTravelpayoutsCode(group.code) === normalizedCode,
+    );
+
+    if (airportGroup) {
+      addRouteCode(airportGroup.code);
+      airportGroup.airportCodes.forEach(addRouteCode);
+      continue;
+    }
+
+    addRouteCode(normalizedCode);
+  }
+
+  return routeCodes;
+}
+
+function getTravelpayoutsRoutePairs(search: SavedSearch): {
+  destination: string;
+  origin: string;
+}[] {
+  const origins = getTravelpayoutsRouteCodes(search.originCodes);
+  const destinations = getTravelpayoutsRouteCodes(search.destinationCodes);
+  const routePairs: { destination: string; origin: string }[] = [];
+
+  for (const origin of origins) {
+    for (const destination of destinations) {
+      if (origin === destination) {
+        continue;
+      }
+
+      routePairs.push({ destination, origin });
+    }
+  }
+
+  return routePairs;
+}
+
+function getTravelpayoutsMonth(value: string): string {
+  const normalizedValue = value.trim();
+  const monthMatch = normalizedValue.match(/^\d{4}-\d{2}/);
+
+  return monthMatch ? monthMatch[0] : normalizedValue;
 }
 
 export async function searchTravelpayoutsCashFlights(
@@ -206,10 +304,9 @@ export async function searchTravelpayoutsCashFlights(
     });
   }
 
-  const origin = search.originCodes[0];
-  const destination = search.destinationCodes[0];
+  const routePairs = getTravelpayoutsRoutePairs(search);
 
-  if (!origin || !destination) {
+  if (routePairs.length === 0) {
     return buildEnvelope({
       status: "unsupported_route",
       data: [],
@@ -217,102 +314,104 @@ export async function searchTravelpayoutsCashFlights(
     });
   }
 
-  const params = new URLSearchParams({
-    origin,
-    destination,
-    depart_date: search.departDate,
-    currency: TRAVELPAYOUTS_CURRENCY,
-  });
+  for (const { destination, origin } of routePairs) {
+    const params = new URLSearchParams({
+      origin,
+      destination,
+      depart_date: getTravelpayoutsMonth(search.departDate),
+      currency: TRAVELPAYOUTS_CURRENCY,
+    });
 
-  if (search.tripType === "round_trip" && search.returnDate) {
-    params.set("return_date", search.returnDate);
-  }
+    if (search.tripType === "round_trip" && search.returnDate) {
+      params.set("return_date", getTravelpayoutsMonth(search.returnDate));
+    }
 
-  let response: Response;
+    let response: Response;
 
-  try {
-    response = await fetch(
-      `${TRAVELPAYOUTS_CHEAP_PRICES_URL}?${params.toString()}`,
-      {
-        headers: {
-          "X-Access-Token": token,
+    try {
+      response = await fetch(
+        `${TRAVELPAYOUTS_CHEAP_PRICES_URL}?${params.toString()}`,
+        {
+          headers: {
+            "X-Access-Token": token,
+          },
         },
-      },
-    );
-  } catch {
-    return buildEnvelope({
-      status: "error",
-      data: [],
-      messages: [requestFailedMessage],
-    });
+      );
+    } catch {
+      return buildEnvelope({
+        status: "error",
+        data: [],
+        messages: [requestFailedMessage],
+      });
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return buildEnvelope({
+        status: "error",
+        data: [],
+        messages: [authErrorMessage],
+      });
+    }
+
+    if (response.status === 429) {
+      return buildEnvelope({
+        status: "rate_limited",
+        data: [],
+        messages: [rateLimitedMessage],
+      });
+    }
+
+    if (!response.ok) {
+      return buildEnvelope({
+        status: "error",
+        data: [],
+        messages: [requestFailedMessage],
+      });
+    }
+
+    let payload: TravelpayoutsCheapResponse;
+
+    try {
+      payload = (await response.json()) as TravelpayoutsCheapResponse;
+    } catch {
+      return buildEnvelope({
+        status: "error",
+        data: [],
+        messages: [requestFailedMessage],
+      });
+    }
+
+    if (!payload.success) {
+      return buildEnvelope({
+        status: "error",
+        data: [],
+        messages: [requestFailedMessage],
+      });
+    }
+
+    const options = flattenCheapResponse(payload.data, origin, search);
+
+    if (options.length > 0) {
+      // Data is present, but this endpoint is always cache-based, so results are
+      // marked "stale" rather than "success" even on a successful request. This
+      // matches the existing codebase convention: `status: "stale"` already means
+      // "usable data present, but a provider marked it as cached/unverified" (see
+      // src/lib/providers/status.ts `isStaleProviderData`/`usableStatuses` and the
+      // "stale" copy in src/lib/providers/display.ts), so this is not a new use of
+      // the status.
+      return buildEnvelope({
+        status: "stale",
+        data: options,
+        messages: [staleDataMessage],
+        isStale: true,
+      });
+    }
   }
 
-  if (response.status === 401 || response.status === 403) {
-    return buildEnvelope({
-      status: "error",
-      data: [],
-      messages: [authErrorMessage],
-    });
-  }
-
-  if (response.status === 429) {
-    return buildEnvelope({
-      status: "rate_limited",
-      data: [],
-      messages: [rateLimitedMessage],
-    });
-  }
-
-  if (!response.ok) {
-    return buildEnvelope({
-      status: "error",
-      data: [],
-      messages: [requestFailedMessage],
-    });
-  }
-
-  let payload: TravelpayoutsCheapResponse;
-
-  try {
-    payload = (await response.json()) as TravelpayoutsCheapResponse;
-  } catch {
-    return buildEnvelope({
-      status: "error",
-      data: [],
-      messages: [requestFailedMessage],
-    });
-  }
-
-  if (!payload.success) {
-    return buildEnvelope({
-      status: "error",
-      data: [],
-      messages: [requestFailedMessage],
-    });
-  }
-
-  const options = flattenCheapResponse(payload.data, search);
-
-  if (options.length === 0) {
-    return buildEnvelope({
-      status: "no_results",
-      data: [],
-      messages: [noResultsMessage],
-    });
-  }
-
-  // Data is present, but this endpoint is always cache-based, so results are
-  // marked "stale" rather than "success" even on a successful request. This
-  // matches the existing codebase convention: `status: "stale"` already means
-  // "usable data present, but a provider marked it as cached/unverified" (see
-  // src/lib/providers/status.ts `isStaleProviderData`/`usableStatuses` and the
-  // "stale" copy in src/lib/providers/display.ts), so this is not a new use of
-  // the status.
   return buildEnvelope({
-    status: "stale",
-    data: options,
-    messages: [staleDataMessage],
-    isStale: true,
+    status: "no_results",
+    data: [],
+    messages: [noResultsMessage],
   });
 }
 

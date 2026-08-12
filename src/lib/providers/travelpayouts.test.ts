@@ -6,8 +6,8 @@ const search: SavedSearch = {
   id: "search-1",
   userId: "local-user",
   name: "Tokyo Spring Trip",
-  originCodes: ["WAS"],
-  destinationCodes: ["TYO"],
+  originCodes: ["IAD"],
+  destinationCodes: ["HND"],
   departDate: "2027-05-01",
   returnDate: "2027-05-10",
   tripType: "round_trip",
@@ -19,6 +19,18 @@ const search: SavedSearch = {
   updatedAt: "2026-06-06T00:00:00.000Z",
 };
 
+const expandedAirportGroupSearch: SavedSearch = {
+  ...search,
+  id: "search-2",
+  name: "Paris Winter Trip",
+  originCodes: ["DCA", "IAD", "BWI"],
+  destinationCodes: ["CDG", "ORY"],
+  departDate: "2026-12-01",
+  returnDate: "2026-12-10",
+};
+
+let fetchMock: ReturnType<typeof vi.fn>;
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -26,9 +38,14 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function getCalledUrl(callIndex = 0): URL {
+  const [calledUrl] = fetchMock.mock.calls[callIndex] as [string];
+
+  return new URL(calledUrl);
+}
+
 describe("searchTravelpayoutsCashFlights", () => {
   const originalToken = process.env.TRAVELPAYOUTS_TOKEN;
-  let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     process.env.TRAVELPAYOUTS_TOKEN = "test-token";
@@ -50,9 +67,8 @@ describe("searchTravelpayoutsCashFlights", () => {
     await searchTravelpayoutsCashFlights(search);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [calledUrl] = fetchMock.mock.calls[0] as [string];
-    expect(calledUrl.startsWith("https://api.travelpayouts.com/v1/prices/cheap?")).toBe(
-      true,
+    expect(getCalledUrl().origin + getCalledUrl().pathname).toBe(
+      "https://api.travelpayouts.com/v1/prices/cheap",
     );
   });
 
@@ -72,12 +88,102 @@ describe("searchTravelpayoutsCashFlights", () => {
     expect(headers["X-Access-Token"]).toBe("test-token");
   });
 
+  it("sends Travelpayouts cheap-prices dates at month granularity", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ success: true, data: {} }),
+    );
+
+    await searchTravelpayoutsCashFlights(search);
+
+    const calledUrl = getCalledUrl();
+
+    expect(calledUrl.searchParams.get("origin")).toBe("IAD");
+    expect(calledUrl.searchParams.get("destination")).toBe("HND");
+    expect(calledUrl.searchParams.get("depart_date")).toBe("2027-05");
+    expect(calledUrl.searchParams.get("return_date")).toBe("2027-05");
+    expect(calledUrl.searchParams.get("currency")).toBe("usd");
+  });
+
+  it("uses a matching Travelpayouts airport group code before member airports", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          PAR: {
+            "0": {
+              price: 1003,
+              airline: "UA",
+              flight_number: 57,
+              departure_at: "2026-12-23T22:17:00-05:00",
+              expires_at: "2026-06-13T00:00:00Z",
+            },
+          },
+        },
+      }),
+    );
+
+    const envelope = await searchTravelpayoutsCashFlights(
+      expandedAirportGroupSearch,
+    );
+    const calledUrl = getCalledUrl();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(calledUrl.searchParams.get("origin")).toBe("WAS");
+    expect(calledUrl.searchParams.get("destination")).toBe("PAR");
+    expect(calledUrl.searchParams.get("depart_date")).toBe("2026-12");
+    expect(calledUrl.searchParams.get("return_date")).toBe("2026-12");
+    expect(envelope.data[0]).toMatchObject({
+      cashPriceUsd: 1003,
+      destination: "PAR",
+      origin: "WAS",
+    });
+  });
+
+  it("falls back through member airport pairs when a group route has no cached fares", async () => {
+    for (let index = 0; index < 4; index += 1) {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ success: true, data: {} }),
+      );
+    }
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          CDG: {
+            "0": {
+              price: 1195,
+              airline: "AC",
+              flight_number: 860,
+              departure_at: "2026-12-23T20:45:00-05:00",
+              expires_at: "2026-06-13T00:00:00Z",
+            },
+          },
+        },
+      }),
+    );
+
+    const envelope = await searchTravelpayoutsCashFlights(
+      expandedAirportGroupSearch,
+    );
+    const calledUrl = getCalledUrl(4);
+
+    expect(calledUrl.searchParams.get("origin")).toBe("DCA");
+    expect(calledUrl.searchParams.get("destination")).toBe("CDG");
+    expect(envelope.status).toBe("stale");
+    expect(envelope.data[0]).toMatchObject({
+      cashPriceUsd: 1195,
+      destination: "CDG",
+      origin: "DCA",
+    });
+  });
+
   it("flattens the nested data object and maps fields on a successful response", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         success: true,
         data: {
-          TYO: {
+          HND: {
             "0": {
               price: 812,
               airline: "NH",
@@ -106,8 +212,8 @@ describe("searchTravelpayoutsCashFlights", () => {
 
     expect(first.airline).toBe("NH");
     expect(first.flightNumbers).toEqual(["NH6"]);
-    expect(first.destination).toBe("TYO");
-    expect(first.origin).toBe("WAS");
+    expect(first.destination).toBe("HND");
+    expect(first.origin).toBe("IAD");
     expect(first.cashPriceUsd).toBe(812);
     expect(first.source).toBe("travelpayouts");
     expect(first.departureDateTime).toBe("2027-05-01T10:00:00Z");
@@ -122,7 +228,7 @@ describe("searchTravelpayoutsCashFlights", () => {
       jsonResponse({
         success: true,
         data: {
-          TYO: {
+          HND: {
             "0": {
               price: 812,
               airline: "NH",

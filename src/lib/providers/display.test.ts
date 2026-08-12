@@ -259,7 +259,7 @@ describe("provider display helpers", () => {
       }),
     ).toMatchObject({
       title: "Cash benchmark unavailable",
-      description: expect.stringContaining("Award options are still shown"),
+      description: expect.stringContaining("cached month-level cash fare"),
     });
   });
 

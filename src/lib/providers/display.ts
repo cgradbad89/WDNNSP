@@ -114,10 +114,10 @@ function getProviderResultsMode({
 
 function getMissingCashDescription(hasOtherResults: boolean): string {
   if (hasOtherResults) {
-    return "Award options are still shown, but WDNNSP cannot calculate a cash-backed cents-per-point value for this search.";
+    return "Award options are still shown, but Travelpayouts did not have a cached month-level cash fare for this route, so WDNNSP cannot calculate a cash-backed cents-per-point value.";
   }
 
-  return "The cash provider did not return a fare benchmark for this search.";
+  return "The cash provider did not return a cached month-level fare benchmark for this route.";
 }
 
 function getMissingAwardDescription(hasOtherResults: boolean): string {

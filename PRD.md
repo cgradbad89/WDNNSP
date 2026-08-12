@@ -639,10 +639,14 @@ of the browser.
 **Travelpayouts client (`src/lib/providers/travelpayouts.ts`):**
 
 - Calls `GET https://api.travelpayouts.com/v1/prices/cheap` with `origin`,
-  `destination` (first code of each `SavedSearch` array — airport-group
-  multi-code expansion is not yet split into multiple provider calls),
-  `depart_date`, optional `return_date`, and `currency=usd`. The token is
-  sent via the `X-Access-Token` header, never as a query param.
+  `destination`, `depart_date`, optional `return_date`, and `currency=usd`.
+  Because this endpoint is month-oriented cached fare data, day-level
+  `SavedSearch` dates are reduced to `YYYY-MM` before the Travelpayouts
+  request. If a saved search contains an airport group, or the exact expanded
+  member set for a known airport group (for example `DCA/IAD/BWI` for `WAS`),
+  the client tries the corresponding Travelpayouts city/metro code first and
+  then falls back through member airport pairs until cached data is found. The
+  token is sent via the `X-Access-Token` header, never as a query param.
 - The endpoint returns cached, aggregated prices, not a live per-search shop
   against airline inventory, and it does not confirm arrival time, duration,
   stop count, or cabin class. Mapped `CashFlightOption` results set
@@ -1316,6 +1320,7 @@ Current implementation status as of August 11, 2026:
   helpers, app-owned search API route responses, client API helper failure
   handling, active-search selection priority, route-detail duration/summary
   formatting, and the Travelpayouts client's field mapping/flattening,
+  month-level request dates, airport-group/city-code fallback behavior,
   success-vs-stale status decision, no-results/401/403/429/network-failure
   status mapping, and the route's mock-vs-live provider selection for both
   toggle states.
