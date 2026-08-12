@@ -712,14 +712,28 @@ provider responses stay server-only and are never sent to the browser.
   cabin's own `YMileageCost`/etc. mileage cost (multiplied by passenger
   count) — never collapsed to a single cabin.
 - Seats.aero Cached Search reports date-level availability, not scheduled
-  flight times, taxes/fees, exact stop counts (only a per-cabin nonstop
-  boolean), or transfer-partner mapping. Mapped `AwardFlightOption` results
-  set `departureDateTime`/`arrivalDateTime` to midnight UTC on the reported
-  date, `taxesAndFeesUsd: 0`, `stops: 0`, and `transferSources: []` as
-  explicit placeholders (flagged via limitations), matching the placeholder
-  convention already used in `src/lib/providers/travelpayouts.ts`. This needs
-  product-owner review before the Results UI leans on those fields for a live
-  award card.
+  flight times, taxes/fees, or exact stop counts (only a per-cabin nonstop
+  boolean). Mapped `AwardFlightOption` results set `departureDateTime`/
+  `arrivalDateTime` to midnight UTC on the reported date, `taxesAndFeesUsd: 0`,
+  and `stops: 0` as explicit placeholders (flagged via limitations), matching
+  the placeholder convention already used in
+  `src/lib/providers/travelpayouts.ts`. This needs product-owner review
+  before the Results UI leans on those fields for a live award card.
+- `transferSources` is now populated for live Seats.aero results. Each
+  result's `Source` mileage-program slug (e.g. `"aeroplan"`) is mapped via
+  `src/data/seatsAeroSourceMap.ts` to the airline program name used as
+  `TransferPartner.toProgram` in `data/transferPartners.ts`, then resolved
+  to the matching card programs with `getCardProgramsForAirline` (the
+  reverse of `getTransferPartnersForProgram`) in
+  `src/lib/transferPartners/lookup.ts`. Sources with no mapped program, or
+  programs with no known card transfer partners in the wallet's data (e.g.
+  Delta SkyMiles, United's regional partners not carried by any card), still
+  resolve to `[]` rather than erroring — this is expected for programs the
+  static transfer-partner table doesn't cover, not a bug. The Seats.aero ->
+  program slug list was confirmed against the live developer docs during
+  this session; see the header comment in `seatsAeroSourceMap.ts` for slugs
+  that differ from earlier assumptions (Copa is `connectmiles`, GOL is
+  `smiles`, SAS is `eurobonus`, Virgin Australia is `velocity`).
 - Status mapping: any available cabin found maps to `status: "success"`
   (this session's live Cached Search response has no per-result freshness
   field equivalent to a documented "computed last seen" timestamp — only a
@@ -736,10 +750,7 @@ provider responses stay server-only and are never sent to the browser.
   `ENABLE_LIVE_AWARD_PROVIDER` (`"true"`/`"false"`), documented with empty
   placeholders in `.env.example`.
 - Not implemented in this session: Bulk Availability endpoint, Get Trips
-  (flight-level segment detail), pagination beyond the first page, and
-  mapping Seats.aero's mileage-program `Source` to this app's transfer-partner
-  database (`transferSources` is left empty for live results pending that
-  mapping).
+  (flight-level segment detail), and pagination beyond the first page.
 
 Award result objects also include optional real-provider-ready metadata:
 provider references, ISO-like fee money values, freshness, availability status,

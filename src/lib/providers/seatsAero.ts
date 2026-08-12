@@ -1,3 +1,6 @@
+import { TRANSFER_PARTNERS } from "@/data/transferPartners";
+import { SEATS_AERO_SOURCE_MAP } from "@/data/seatsAeroSourceMap";
+import { getCardProgramsForAirline } from "@/lib/transferPartners/lookup";
 import type {
   AwardFlightProvider,
   ProviderMessage,
@@ -32,6 +35,26 @@ import type { SavedSearch } from "@/types/search";
 const SEATS_AERO_PROVIDER_ID = "seats-aero";
 const SEATS_AERO_PROVIDER_LABEL = "Seats.aero";
 const SEATS_AERO_CACHED_SEARCH_URL = "https://seats.aero/partnerapi/search";
+
+// Looks up the card programs (e.g. "Chase Ultimate Rewards") that can
+// transfer into the given Seats.aero mileage-program source slug (e.g.
+// "aeroplan"), via SEATS_AERO_SOURCE_MAP -> TRANSFER_PARTNERS. Slugs with no
+// mapped program, or programs with no known card transfer partners, resolve
+// to an empty array rather than throwing.
+function getTransferSourcesForSeatsAeroSource(sourceSlug: string): string[] {
+  const airlineProgram = SEATS_AERO_SOURCE_MAP[sourceSlug];
+
+  if (!airlineProgram) {
+    return [];
+  }
+
+  const cardPartners = getCardProgramsForAirline(
+    airlineProgram,
+    TRANSFER_PARTNERS,
+  );
+
+  return [...new Set(cardPartners.map((partner) => partner.fromProgram))];
+}
 
 type SeatsAeroCabinKey = "Y" | "W" | "J" | "F";
 
@@ -264,10 +287,12 @@ function mapResultCabinToAwardOption({
     // Seats.aero Cached Search does not return taxes/fees. Placeholder $0,
     // flagged via `limitations` below rather than guessed.
     taxesAndFeesUsd: 0,
-    // Seats.aero reports the mileage program (e.g. "aeroplan"), not which
-    // transferable credit card programs route to it. No transfer-partner
-    // lookup is available for that mapping in this session's scope.
-    transferSources: [],
+    // Seats.aero reports the mileage program via `Source` (e.g. "aeroplan"),
+    // mapped through SEATS_AERO_SOURCE_MAP to the card-transferable program
+    // name and looked up against data/transferPartners.ts. Resolves to []
+    // when the source has no mapped program, or the program has no known
+    // card transfer partners.
+    transferSources: getTransferSourcesForSeatsAeroSource(result.Source),
     sourceProgramId: airlineProgram,
     sourceProgramLabel: airlineProgram,
     // `YDirect`/etc. only confirms whether a nonstop option exists in this

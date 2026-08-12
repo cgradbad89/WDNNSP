@@ -129,6 +129,57 @@ describe("searchSeatsAeroAwardFlights", () => {
     expect(economy?.id).not.toBe(business?.id);
   });
 
+  it("populates transferSources for a result whose Source has known card transfer partners", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          baseResult({
+            JAvailable: true,
+            JMileageCost: "75000",
+            JDirect: true,
+          }),
+        ],
+        count: 1,
+        hasMore: false,
+        cursor: 0,
+      }),
+    );
+
+    const envelope = await searchSeatsAeroAwardFlights(search);
+
+    expect(envelope.status).toBe("success");
+    expect(envelope.data[0].transferSources.length).toBeGreaterThan(0);
+    expect(envelope.data[0].transferSources).toContain("Chase Ultimate Rewards");
+  });
+
+  it("leaves transferSources empty for a result whose Source has no known card transfer partners", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          baseResult({
+            Route: {
+              OriginAirport: "WAS",
+              DestinationAirport: "TYO",
+              Source: "delta",
+            },
+            Source: "delta",
+            JAvailable: true,
+            JMileageCost: "75000",
+            JDirect: true,
+          }),
+        ],
+        count: 1,
+        hasMore: false,
+        cursor: 0,
+      }),
+    );
+
+    const envelope = await searchSeatsAeroAwardFlights(search);
+
+    expect(envelope.status).toBe("success");
+    expect(envelope.data[0].transferSources).toEqual([]);
+  });
+
   it("maps a result with only one available cabin to a single AwardFlightOption", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({

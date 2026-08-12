@@ -19,6 +19,20 @@ export function getTransferPartnersForProgram(
   );
 }
 
+export function getCardProgramsForAirline(
+  airlineProgram: string,
+  partners: TransferPartner[],
+): TransferPartner[] {
+  const normalizedAirlineProgram = normalizeProgramName(airlineProgram);
+
+  return partners.filter(
+    (partner) =>
+      partner.isActive &&
+      (partner.toProgramId === airlineProgram ||
+        normalizeProgramName(partner.toProgram) === normalizedAirlineProgram),
+  );
+}
+
 export function getTransferOptionsFromWallet(
   accounts: PointsAccount[],
   partners: TransferPartner[],

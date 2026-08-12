@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getCardProgramsForAirline,
   getTransferOptionsFromWallet,
   getTransferPartnersForProgram,
 } from "@/lib/transferPartners/lookup";
@@ -138,5 +139,50 @@ describe("transfer partner lookup", () => {
   it("attaches and passes through transfer time metadata without dropping it", () => {
     const result = getTransferPartnersForProgram("Chase Ultimate Rewards", partners);
     expect(result[0].estimatedTransferTime).toBe("instant");
+  });
+});
+
+describe("getCardProgramsForAirline", () => {
+  it("returns the card programs that transfer into an airline program with known partners", () => {
+    expect(
+      getCardProgramsForAirline("Air Canada Aeroplan", partners).map(
+        (partner) => partner.id,
+      ),
+    ).toEqual(["chase-aeroplan", "chase-aeroplan-duplicate"]);
+  });
+
+  it("returns an empty array gracefully for an airline program with no matching card partners", () => {
+    expect(
+      getCardProgramsForAirline("Delta SkyMiles", partners),
+    ).toEqual([]);
+  });
+
+  it("matches airline program names case-insensitively", () => {
+    expect(
+      getCardProgramsForAirline("air canada aeroplan", partners),
+    ).toHaveLength(2);
+  });
+
+  it("matches airline program names with extra surrounding whitespace", () => {
+    expect(
+      getCardProgramsForAirline("  Air Canada Aeroplan  ", partners),
+    ).toHaveLength(2);
+  });
+
+  it("matches airline program IDs before falling back to names", () => {
+    expect(
+      getCardProgramsForAirline("air-canada-aeroplan", partners).map(
+        (partner) => partner.id,
+      ),
+    ).toEqual(["chase-aeroplan", "chase-aeroplan-duplicate"]);
+  });
+
+  it("excludes inactive transfer partners", () => {
+    const result = getCardProgramsForAirline("United MileagePlus", partners);
+
+    expect(
+      result.some((partner) => partner.id === "chase-united-inactive"),
+    ).toBe(false);
+    expect(result).toEqual([]);
   });
 });
