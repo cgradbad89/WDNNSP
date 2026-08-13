@@ -1156,6 +1156,19 @@ Preferred stack:
 - Zod for validation
 - React Hook Form for forms
 
+Testing: Vitest for pure-logic/unit tests (`environment: "node"`, the
+project-wide default). Component-level DOM tests are opt-in per file via a
+`// @vitest-environment jsdom` docblock rather than a global environment
+switch, backed by `@testing-library/react` + `@testing-library/jest-dom`
+(matchers registered globally in `vitest.setup.ts`) and `jsdom`, added as
+devDependencies during the August 12, 2026 search-page redesign session.
+`@testing-library/react`'s automatic cleanup does not self-register because
+`vitest.config.ts` does not set `test.globals: true`; `vitest.setup.ts` calls
+`cleanup()` in an explicit `afterEach` instead. See
+`src/components/search/TripSearchForm.test.tsx` for the component-test
+pattern (mocking `next/navigation`, `AuthProvider`, `useWalletAccounts`, and
+`useSearchData` via `vi.mock`).
+
 ---
 
 ## 12. Suggested Project Structure
@@ -1551,6 +1564,11 @@ Recommended test coverage:
 - Recommendation scoring
 - Trip search validation
 - Saved search validation
+
+As of the August 12, 2026 search-page redesign, component-level tests are
+also in scope where a page's DOM structure, ARIA roles, or click behavior are
+worth locking down directly (see `TripSearchForm.test.tsx`); see section 11
+for the `@testing-library/react` + `jsdom` setup this requires.
 
 Example test cases:
 

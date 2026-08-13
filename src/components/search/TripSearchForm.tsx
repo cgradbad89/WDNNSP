@@ -6,11 +6,8 @@ import { useRouter } from "next/navigation";
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { SavedSearchesList } from "@/components/search/SavedSearchesList";
-import { SearchCabinField } from "@/components/search/SearchCabinField";
-import { SearchDateFields } from "@/components/search/SearchDateFields";
-import { SearchRouteFields } from "@/components/search/SearchRouteFields";
-import { SearchSubmitActions } from "@/components/search/SearchSubmitActions";
-import { SearchTravelersFields } from "@/components/search/SearchTravelersFields";
+import { SearchBar } from "@/components/search/SearchBar";
+import { SearchFormStatus } from "@/components/search/SearchSubmitActions";
 import { expandAirportCode } from "@/lib/airports/groups";
 import {
   getAirlineMileageAccounts,
@@ -292,6 +289,20 @@ export function TripSearchForm(): JSX.Element {
     }
   }
 
+  function handleSwapOriginDestination(): void {
+    setFormState((currentState) => ({
+      ...currentState,
+      destination: currentState.origin,
+      origin: currentState.destination,
+    }));
+    setErrors((currentErrors) => ({
+      ...currentErrors,
+      destinationCodes: currentErrors.originCodes,
+      originCodes: currentErrors.destinationCodes,
+    }));
+    setStatusMessage("");
+  }
+
   async function handleSearch(
     event: FormEvent<HTMLFormElement>,
   ): Promise<void> {
@@ -547,139 +558,124 @@ export function TripSearchForm(): JSX.Element {
         ) : null}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <form
-          className="rounded-lg border border-[#d9e2d6] bg-white p-5 shadow-[0_18px_50px_rgba(31,63,45,0.07)] md:p-6"
-          onSubmit={handleSearch}
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h3 className="text-xl font-semibold tracking-tight text-[#14211b]">
-                Trip search
-              </h3>
-              <p className="mt-1 text-sm leading-6 text-[#637268]">
-                Use one airport code or supported airport group per side.
-              </p>
-            </div>
-            <span className="w-fit rounded-md bg-[#edf3ea] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#2f6b4f]">
-              {formState.tripType === "round_trip" ? "Round trip" : "One way"}
-            </span>
+      <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 shadow-[0_18px_50px_rgba(31,63,45,0.07)] md:p-6">
+        <form onSubmit={handleSearch}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <label className="block max-w-sm">
+              <span className="text-sm font-semibold text-[#24382d]">
+                Trip name
+              </span>
+              <input
+                className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-2.5 text-sm font-semibold text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
+                onChange={(event) => updateField("name", event.target.value)}
+                type="text"
+                value={formState.name}
+              />
+              <FieldError>{errors.name}</FieldError>
+            </label>
+            <p className="text-sm leading-6 text-[#637268]">
+              Use one airport code or supported airport group per side.
+            </p>
           </div>
 
-          <label className="mt-6 block">
-            <span className="text-sm font-semibold text-[#24382d]">
-              Trip name
-            </span>
-            <input
-              className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-base font-semibold text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
-              onChange={(event) => updateField("name", event.target.value)}
-              type="text"
-              value={formState.name}
-            />
-            <FieldError>{errors.name}</FieldError>
-          </label>
-
-          <SearchRouteFields
-            destination={formState.destination}
-            destinationError={errors.destinationCodes}
-            onChangeDestination={(value) => updateField("destination", value)}
-            onChangeOrigin={(value) => updateField("origin", value)}
-            origin={formState.origin}
-            originError={errors.originCodes}
-          />
-
-          <SearchDateFields
-            departDate={formState.departDate}
-            departDateError={errors.departDate}
-            onChangeDepartDate={(value) => updateField("departDate", value)}
-            onChangeReturnDate={(value) => updateField("returnDate", value)}
-            onChangeTripType={handleTripTypeChange}
-            returnDate={formState.returnDate}
-            returnDateError={errors.returnDate}
-            tripType={formState.tripType}
-          />
-
-          <div className="mt-4 grid gap-4 md:grid-cols-4">
-            <SearchCabinField
-              error={errors.cabin}
-              onChange={(value) => updateField("cabin", value)}
-              value={formState.cabin}
-            />
-            <SearchTravelersFields
+          <div className="mt-4">
+            <SearchBar
+              cabin={formState.cabin}
+              cabinError={errors.cabin}
+              departDate={formState.departDate}
+              departDateError={errors.departDate}
+              destination={formState.destination}
+              destinationError={errors.destinationCodes}
               flexibleDays={formState.flexibleDays}
               flexibleDaysError={errors.flexibleDays}
               maxStops={formState.maxStops}
               maxStopsError={errors.maxStops}
+              onChangeCabin={(value) => updateField("cabin", value)}
+              onChangeDepartDate={(value) => updateField("departDate", value)}
+              onChangeDestination={(value) =>
+                updateField("destination", value)
+              }
               onChangeFlexibleDays={(value) =>
                 updateField("flexibleDays", value)
               }
               onChangeMaxStops={(value) => updateField("maxStops", value)}
-              onChangePassengers={(value) => updateField("passengers", value)}
+              onChangeOrigin={(value) => updateField("origin", value)}
+              onChangePassengers={(value) =>
+                updateField("passengers", value)
+              }
+              onChangeReturnDate={(value) =>
+                updateField("returnDate", value)
+              }
+              onChangeTripType={handleTripTypeChange}
+              onSwap={handleSwapOriginDestination}
+              origin={formState.origin}
+              originError={errors.originCodes}
               passengers={formState.passengers}
               passengersError={errors.passengers}
+              returnDate={formState.returnDate}
+              returnDateError={errors.returnDate}
+              tripType={formState.tripType}
             />
           </div>
 
-          <SearchSubmitActions
+          <SearchFormStatus
             onReset={handleResetDefaults}
             statusMessage={statusMessage}
           />
         </form>
 
-        <aside className="space-y-4">
-          <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 md:p-6">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
-              Wallet readiness
-            </p>
-            <div className="mt-4 space-y-3">
-              {wallet.isLoading ? (
-                <div className="rounded-md border border-dashed border-[#b8c8b2] p-4 text-sm text-[#637268]">
-                  Loading wallet balances.
-                </div>
-              ) : null}
-
-              {!wallet.isLoading && topWalletAccounts.length === 0 ? (
-                <div className="rounded-md border border-dashed border-[#b8c8b2] p-4 text-sm text-[#637268]">
-                  No wallet balances available for this search yet.
-                </div>
-              ) : null}
-
-              {!wallet.isLoading && topWalletAccounts.map((account) => (
-                <article
-                  className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
-                  key={account.id}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-[#24382d]">
-                        {account.programName}
-                      </h4>
-                      <p className="mt-1 text-xs leading-5 text-[#637268]">
-                        {account.programType === "credit_card"
-                          ? "Transferable points"
-                          : "Direct airline miles"}
-                      </p>
-                    </div>
-                    <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-[#2f6b4f]">
-                      Ready
-                    </span>
-                  </div>
-                  <p className="mt-3 text-2xl font-semibold tracking-tight text-[#14211b]">
-                    {formatNumber(account.balance)}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </section>
-        </aside>
+        <SavedSearchesList
+          isLoaded={isSearchLoaded}
+          onDeleteSearch={handleDeleteSavedSearch}
+          onRunSearch={handleRunSavedSearch}
+          savedSearches={savedSearchItems}
+        />
       </section>
 
-      <SavedSearchesList
-        isLoaded={isSearchLoaded}
-        onDeleteSearch={handleDeleteSavedSearch}
-        onRunSearch={handleRunSavedSearch}
-        savedSearches={savedSearchItems}
-      />
+      <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 md:p-6">
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
+          Wallet readiness
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {wallet.isLoading ? (
+            <div className="rounded-md border border-dashed border-[#b8c8b2] p-4 text-sm text-[#637268]">
+              Loading wallet balances.
+            </div>
+          ) : null}
+
+          {!wallet.isLoading && topWalletAccounts.length === 0 ? (
+            <div className="rounded-md border border-dashed border-[#b8c8b2] p-4 text-sm text-[#637268]">
+              No wallet balances available for this search yet.
+            </div>
+          ) : null}
+
+          {!wallet.isLoading && topWalletAccounts.map((account) => (
+            <article
+              className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
+              key={account.id}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-[#24382d]">
+                    {account.programName}
+                  </h4>
+                  <p className="mt-1 text-xs leading-5 text-[#637268]">
+                    {account.programType === "credit_card"
+                      ? "Transferable points"
+                      : "Direct airline miles"}
+                  </p>
+                </div>
+                <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-[#2f6b4f]">
+                  Ready
+                </span>
+              </div>
+              <p className="mt-3 text-2xl font-semibold tracking-tight text-[#14211b]">
+                {formatNumber(account.balance)}
+              </p>
+            </article>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

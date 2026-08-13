@@ -2,13 +2,6 @@
 
 import type { JSX } from "react";
 
-interface SearchSubmitActionsProps {
-  isResetDisabled?: boolean;
-  isSearchDisabled?: boolean;
-  onReset: () => void;
-  statusMessage: string;
-}
-
 function SearchIcon({ className }: { className?: string }): JSX.Element {
   return (
     <svg
@@ -28,45 +21,47 @@ function SearchIcon({ className }: { className?: string }): JSX.Element {
   );
 }
 
-function ArrowIcon({ className }: { className?: string }): JSX.Element {
+interface SearchSubmitButtonProps {
+  isDisabled?: boolean;
+}
+
+/**
+ * The primary submit action, meant to sit at the end of the horizontal
+ * search bar. Kept as its own component (rather than inline in the bar) so
+ * it stays a single visual/behavioral unit with SearchFormStatus below.
+ */
+export function SearchSubmitButton({
+  isDisabled = false,
+}: SearchSubmitButtonProps): JSX.Element {
   return (
-    <svg
-      aria-hidden="true"
-      className={className}
-      fill="none"
-      viewBox="0 0 20 20"
+    <button
+      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-[#2f6b4f] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(47,107,79,0.18)] transition hover:bg-[#25573f] disabled:cursor-not-allowed disabled:opacity-60"
+      disabled={isDisabled}
+      type="submit"
     >
-      <path
-        d="M4 10h11m0 0-4-4m4 4-4 4"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </svg>
+      <SearchIcon className="h-4 w-4" />
+      Search
+    </button>
   );
 }
 
-export function SearchSubmitActions({
+interface SearchFormStatusProps {
+  isResetDisabled?: boolean;
+  onReset: () => void;
+  statusMessage: string;
+}
+
+/** Reset + status row rendered below the search bar. */
+export function SearchFormStatus({
   isResetDisabled = false,
-  isSearchDisabled = false,
   onReset,
   statusMessage,
-}: SearchSubmitActionsProps): JSX.Element {
+}: SearchFormStatusProps): JSX.Element {
   return (
     <>
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="mt-3 flex flex-wrap items-center gap-3">
         <button
-          className="inline-flex items-center justify-center gap-2 rounded-md bg-[#2f6b4f] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(47,107,79,0.18)] transition hover:bg-[#25573f]"
-          disabled={isSearchDisabled}
-          type="submit"
-        >
-          <SearchIcon className="h-4 w-4" />
-          Search
-          <ArrowIcon className="h-4 w-4" />
-        </button>
-        <button
-          className="rounded-md border border-[#b8c8b2] px-5 py-3 text-sm font-semibold text-[#24382d] transition hover:bg-[#edf3ea]"
+          className="rounded-md border border-[#b8c8b2] px-4 py-2 text-sm font-semibold text-[#24382d] transition hover:bg-[#edf3ea]"
           disabled={isResetDisabled}
           onClick={onReset}
           type="button"
@@ -76,7 +71,7 @@ export function SearchSubmitActions({
       </div>
 
       {statusMessage ? (
-        <p className="mt-4 rounded-md bg-[#edf3ea] px-4 py-3 text-sm font-semibold text-[#2f6b4f]">
+        <p className="mt-3 rounded-md bg-[#edf3ea] px-4 py-3 text-sm font-semibold text-[#2f6b4f]">
           {statusMessage}
         </p>
       ) : null}

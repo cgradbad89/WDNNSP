@@ -18,6 +18,14 @@ interface AirportAutocompleteProps {
   error?: string;
   hint?: string;
   placeholder?: string;
+  /**
+   * "default" is the standalone stacked field used on the edit-search drawer
+   * and the design prototype. "bar" is a compact, borderless variant meant to
+   * sit inside a shared horizontal search-bar segment. Only container
+   * spacing/typography changes between variants; suggestion matching and
+   * keyboard behavior are identical.
+   */
+  variant?: "default" | "bar";
 }
 
 function getSuggestionBadgeClassName(type: AirportSuggestion["type"]): string {
@@ -35,7 +43,9 @@ export function AirportAutocomplete({
   onSelect,
   placeholder,
   value,
+  variant = "default",
 }: AirportAutocompleteProps): JSX.Element {
+  const isBarVariant = variant === "bar";
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -55,7 +65,10 @@ export function AirportAutocomplete({
     shouldShowSuggestions && selectedIndex >= 0
       ? `${id}-suggestion-${suggestions[selectedIndex]?.code}`
       : undefined;
-  const describedBy = [error ? errorId : undefined, hint ? hintId : undefined]
+  const describedBy = [
+    error ? errorId : undefined,
+    hint && !isBarVariant ? hintId : undefined,
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -127,9 +140,21 @@ export function AirportAutocomplete({
   }
 
   return (
-    <div className="relative" onBlur={handleBlur} ref={containerRef}>
+    <div
+      className={isBarVariant ? "relative min-w-0 flex-1" : "relative"}
+      onBlur={handleBlur}
+      ref={containerRef}
+    >
       <label className="block" htmlFor={id}>
-        <span className="text-sm font-semibold text-[#24382d]">{label}</span>
+        <span
+          className={
+            isBarVariant
+              ? "text-xs font-semibold uppercase tracking-[0.14em] text-[#637268]"
+              : "text-sm font-semibold text-[#24382d]"
+          }
+        >
+          {label}
+        </span>
       </label>
       <input
         aria-activedescendant={activeOptionId}
@@ -139,7 +164,11 @@ export function AirportAutocomplete({
         aria-expanded={shouldShowSuggestions}
         aria-haspopup="listbox"
         aria-invalid={error ? true : undefined}
-        className="mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-base font-semibold uppercase text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
+        className={
+          isBarVariant
+            ? "mt-1 w-full truncate rounded-md bg-transparent py-1 text-base font-semibold uppercase text-[#14211b] outline-none transition focus:bg-white/70"
+            : "mt-2 w-full rounded-md border border-[#b8c8b2] bg-[#f9fbf8] px-4 py-3 text-base font-semibold uppercase text-[#14211b] outline-none transition focus:border-[#2f6b4f] focus:bg-white focus:ring-4 focus:ring-[#2f6b4f]/10"
+        }
         id={id}
         onChange={handleChange}
         onFocus={handleFocus}
@@ -150,11 +179,18 @@ export function AirportAutocomplete({
         value={value}
       />
       {error ? (
-        <p className="mt-2 text-sm font-medium text-[#8f2d2d]" id={errorId}>
+        <p
+          className={
+            isBarVariant
+              ? "absolute left-0 top-full z-10 mt-1 whitespace-nowrap text-xs font-medium text-[#8f2d2d]"
+              : "mt-2 text-sm font-medium text-[#8f2d2d]"
+          }
+          id={errorId}
+        >
           {error}
         </p>
       ) : null}
-      {hint ? (
+      {hint && !isBarVariant ? (
         <p className="mt-2 text-sm leading-6 text-[#637268]" id={hintId}>
           {hint}
         </p>
@@ -162,7 +198,7 @@ export function AirportAutocomplete({
 
       {shouldShowSuggestions ? (
         <div
-          className="absolute z-20 mt-2 w-full rounded-md border border-[#b8c8b2] bg-white p-2 shadow-[0_16px_34px_rgba(31,63,45,0.14)]"
+          className="absolute z-20 mt-2 w-full min-w-[280px] rounded-md border border-[#b8c8b2] bg-white p-2 shadow-[0_16px_34px_rgba(31,63,45,0.14)]"
           id={listboxId}
           role="listbox"
         >
