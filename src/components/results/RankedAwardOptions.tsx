@@ -299,7 +299,7 @@ function AwardOptionRow({
                 <CentsPerPointHelp />
               </p>
               <p className="mt-2 text-lg font-semibold text-[#14211b]">
-                {option.centsPerPoint?.toFixed(1) ?? "0.0"}
+                {option.centsPerPoint?.toFixed(1) ?? "N/A"}
               </p>
             </div>
             <div className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3">

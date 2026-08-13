@@ -663,8 +663,8 @@ export function ResultsPageClient(): JSX.Element {
       <section
         className={
           hasAwardResults
-            ? "grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]"
-            : "grid gap-6"
+            ? "grid min-w-0 gap-6 xl:grid-cols-[280px_minmax(0,1fr)]"
+            : "grid min-w-0 gap-6"
         }
       >
         {hasAwardResults ? (
@@ -674,7 +674,7 @@ export function ResultsPageClient(): JSX.Element {
           />
         ) : null}
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {hasAnyProviderResults ? (
             <>
               <BestRecommendationCard

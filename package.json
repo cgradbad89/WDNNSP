@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "audit:flights": "node scripts/flight-price-audit.mjs",
     "data:airports": "node scripts/generate-airports.mjs"
   },
   "dependencies": {

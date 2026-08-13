@@ -622,6 +622,8 @@ describe("ResultsPageClient unreported-field disclosure", () => {
     fireEvent.click(within(row).getByRole("button", { name: /show details/i }));
 
     expect(within(row).getByText("Duration not reported")).toBeInTheDocument();
+    expect(within(row).getByText("N/A")).toBeInTheDocument();
+    expect(within(row).queryByText("0.0")).not.toBeInTheDocument();
   });
 
   it("never shows a hardcoded 'Nonstop' claim for an award option whose stops were never confirmed", async () => {

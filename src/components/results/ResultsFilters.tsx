@@ -68,7 +68,7 @@ export function ResultsFilters({
   onChangeFilter,
 }: ResultsFiltersProps): JSX.Element {
   return (
-    <aside className="space-y-4">
+    <aside className="min-w-0 space-y-4">
       <section className="rounded-lg border border-[#d9e2d6] bg-white p-5">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
           Filters
