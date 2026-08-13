@@ -583,7 +583,7 @@ export default function ResultsDesignPage(): JSX.Element {
 
         <div className="mt-6 grid gap-3 md:grid-cols-2">
           {[
-            "Strong redemption value against a high business-class cash benchmark.",
+            "Strong redemption value against a high business-class cash fare estimate.",
             "Chase and Amex both provide direct transfer paths to Aeroplan.",
             "Transfer requirement is visible before any points move.",
             "One-stop routing keeps convenience acceptable for the value.",
@@ -608,15 +608,16 @@ export default function ResultsDesignPage(): JSX.Element {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
-              Lowest reasonable cash fare
+              Cash fare estimate
             </p>
             <h3 className="mt-2 text-4xl font-semibold tracking-tight text-[#14211b]">
               $7,100
             </h3>
           </div>
           <p className="max-w-xl text-sm leading-6 text-[#637268]">
-            This mock business fare for two travelers is the comparable cash
-            benchmark used to calculate redemption value after taxes and fees.
+            This mock business fare estimate for two travelers is the
+            comparable cash fare estimate used to estimate redemption value
+            after taxes and fees.
           </p>
         </div>
       </section>

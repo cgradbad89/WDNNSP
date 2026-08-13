@@ -692,7 +692,7 @@ export function ResultsPageClient(): JSX.Element {
                 />
                 <ProviderSourceNote
                   envelope={flightSearchResults.cash}
-                  label="Cash benchmark"
+                  label="Cash fare estimate"
                 />
               </div>
 
@@ -730,7 +730,7 @@ export function ResultsPageClient(): JSX.Element {
               <div className="grid gap-3 lg:grid-cols-2">
                 <ProviderSourceNote
                   envelope={flightSearchResults.cash}
-                  label="Cash benchmark"
+                  label="Cash fare estimate"
                 />
                 <ProviderSourceNote
                   envelope={flightSearchResults.awards}

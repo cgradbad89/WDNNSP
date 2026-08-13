@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const ROUTES = [
   ["DCA", "ATL"],
@@ -644,7 +645,7 @@ function normalizeRun({ envelope, receivedAt, runIndex, search }) {
       finalDisplayedValueExpectedInUi: {
         cashBenchmark:
           selectedCashOption === undefined
-            ? "Cash benchmark unavailable"
+            ? "Cash fare estimate unavailable"
             : `$${Math.round(selectedCashOption.cashPriceUsd).toLocaleString("en-US")}`,
         award:
           selectedAwardOption === undefined
@@ -705,6 +706,7 @@ function compareRuns(runs) {
 
   if (!firstRun || !secondRun) {
     return {
+      classification: "single_run",
       stable: null,
       notes: "Only one run was captured.",
     };
@@ -724,22 +726,43 @@ function compareRuns(runs) {
   const sameItineraryIds =
     JSON.stringify(firstStats.itineraryIds) ===
     JSON.stringify(secondStats.itineraryIds);
-  const materiallyDifferent =
+  const bothRunsReturnedZeroResults =
+    firstStats.resultCount === 0 && secondStats.resultCount === 0;
+  const bothRunsReturnedCashResults =
+    firstStats.resultCount > 0 && secondStats.resultCount > 0;
+  const resultCoverageChanged =
     firstStats.resultCount !== secondStats.resultCount ||
-    firstStats.usablePriceCount !== secondStats.usablePriceCount ||
-    minDelta !== 0 ||
-    medianDelta !== 0 ||
-    !sameItineraryIds;
+    firstStats.usablePriceCount !== secondStats.usablePriceCount;
+  const returnedPricesChanged =
+    bothRunsReturnedCashResults &&
+    (minDelta !== 0 || medianDelta !== 0 || !sameItineraryIds);
+  const materiallyDifferent =
+    resultCoverageChanged || returnedPricesChanged;
+  const classification = bothRunsReturnedZeroResults
+    ? "stable_zero_results"
+    : returnedPricesChanged
+      ? "price_instability"
+      : resultCoverageChanged
+        ? "coverage_changed"
+        : bothRunsReturnedCashResults
+          ? "stable_returned_prices"
+          : "stable";
 
   return {
+    classification,
     run1Min: firstStats.minPrice,
     run2Min: secondStats.minPrice,
     minDelta,
     medianDelta,
     stable: !materiallyDifferent,
-    notes: materiallyDifferent
-      ? "Repeated calls differed in count, price, or itinerary identity."
-      : "Repeated calls were stable for normalized cash prices.",
+    notes:
+      classification === "stable_zero_results"
+        ? "Repeated calls consistently returned zero cached cash fare results; this is a coverage gap, not price instability."
+        : classification === "price_instability"
+          ? "Repeated calls returned cash prices but differed in price or itinerary identity."
+          : classification === "coverage_changed"
+            ? "Repeated calls changed result coverage/count."
+            : "Repeated calls were stable for normalized cash prices.",
   };
 }
 
@@ -775,11 +798,13 @@ function buildTables(records) {
       resultsWithPrice: stats.usablePriceCount,
       usablePricePercent: stats.usablePriceRate,
       notes:
-        stats.usablePriceRate < 80
-          ? "P1: fewer than 80% of returned cash options have usable prices."
-          : first.providerMetadata.cash.isLive
-            ? "Live provider envelope; raw third-party payload not exposed."
-            : "Mock provider envelope.",
+        stats.resultCount === 0
+          ? "Zero cached cash fare results returned; coverage gap, not missing returned prices."
+          : stats.usablePriceRate < 80
+            ? "P1: fewer than 80% of returned cash options have usable prices."
+            : first.providerMetadata.cash.isLive
+              ? "Live provider envelope; raw third-party payload not exposed."
+              : "Mock provider envelope.",
     });
     priceConsistency.push({
       origin: first.origin,
@@ -796,6 +821,7 @@ function buildTables(records) {
       run2Min: comparison.run2Min ?? null,
       minDelta: comparison.minDelta ?? null,
       medianDelta: comparison.medianDelta ?? null,
+      classification: comparison.classification,
       stable: comparison.stable,
       notes: comparison.notes,
     });
@@ -842,6 +868,67 @@ function getOverallUsablePriceRate(records) {
   }
 
   return Math.round((totals.usablePriceCount / totals.resultCount) * 1000) / 10;
+}
+
+function getCashAuditSummary(records, tables) {
+  const firstRuns = records.filter((record) => record.runIndex === 1);
+  const firstRunTotals = firstRuns.reduce(
+    (accumulator, record) => {
+      const stats = record.priceConsistency.cash;
+
+      return {
+        cashCoverageGaps:
+          accumulator.cashCoverageGaps + (stats.resultCount === 0 ? 1 : 0),
+        routeDateCombinationCount: accumulator.routeDateCombinationCount + 1,
+        returnedCashOptions:
+          accumulator.returnedCashOptions + stats.resultCount,
+        returnedCashOptionsWithUsablePrices:
+          accumulator.returnedCashOptionsWithUsablePrices +
+          stats.usablePriceCount,
+      };
+    },
+    {
+      cashCoverageGaps: 0,
+      routeDateCombinationCount: 0,
+      returnedCashOptions: 0,
+      returnedCashOptionsWithUsablePrices: 0,
+    },
+  );
+  const returnedCashOptionsWithMissingPrices =
+    firstRunTotals.returnedCashOptions -
+    firstRunTotals.returnedCashOptionsWithUsablePrices;
+  const returnedCashResultUsablePriceRate =
+    firstRunTotals.returnedCashOptions === 0
+      ? 0
+      : Math.round(
+          (firstRunTotals.returnedCashOptionsWithUsablePrices /
+            firstRunTotals.returnedCashOptions) *
+            1000,
+        ) / 10;
+  const actualPriceInstabilityCount = tables.priceConsistency.filter(
+    (row) => row.classification === "price_instability",
+  ).length;
+  const stableZeroResultCount = tables.priceConsistency.filter(
+    (row) => row.classification === "stable_zero_results",
+  ).length;
+  const returnedPriceRows = tables.priceConsistency.filter(
+    (row) =>
+      row.classification === "stable_returned_prices" ||
+      row.classification === "price_instability",
+  );
+  const returnedPriceStableCount = returnedPriceRows.filter(
+    (row) => row.classification === "stable_returned_prices",
+  ).length;
+
+  return {
+    ...firstRunTotals,
+    actualPriceInstabilityCount,
+    returnedCashOptionsWithMissingPrices,
+    returnedCashResultUsablePriceRate,
+    returnedPriceStableCount,
+    returnedPriceTestedCount: returnedPriceRows.length,
+    stableZeroResultCount,
+  };
 }
 
 function getFindings(records) {
@@ -925,6 +1012,13 @@ function renderMarkdownReport({ generatedAt, records, tables }) {
   const awardProviders = [
     ...new Set(firstRuns.map((record) => record.providerQueried.awards)),
   ].join(", ");
+  const cashAuditSummary = getCashAuditSummary(records, tables);
+  const returnedPriceStabilityText =
+    cashAuditSummary.returnedPriceTestedCount === 0
+      ? "not tested because no route/date combinations returned cash results"
+      : cashAuditSummary.actualPriceInstabilityCount === 0
+        ? "stable for route/date combinations with returned results"
+        : `${cashAuditSummary.actualPriceInstabilityCount} of ${cashAuditSummary.returnedPriceTestedCount} returned-result route/date combinations had repeated-price instability`;
 
   const routeCoverageRows = tables.routeCoverage.map((row) => ({
     Origin: row.origin,
@@ -946,6 +1040,7 @@ function renderMarkdownReport({ generatedAt, records, tables }) {
     "Run 2 Usable Price %": row.run2UsablePricePercent ?? "N/A",
     "Min Price Delta": row.minDelta ?? "N/A",
     "Median Price Delta": row.medianDelta ?? "N/A",
+    "Result Pattern": row.classification,
     Stable: row.stable === null ? "N/A" : row.stable ? "yes" : "no",
     "Provider Mode": row.providerMode,
     Notes: row.notes,
@@ -1056,9 +1151,11 @@ ${findings.map((finding, index) => `${index + 1}. ${finding.severity}: ${finding
 
 ## Price API Consistency
 
-- Overall usable price rate: ${usablePriceRate}%
-- Routes with missing prices: ${tables.routeCoverage.filter((row) => row.resultsWithPrice === 0).length}
-- Routes with unstable prices: ${tables.priceConsistency.filter((row) => row.stable === false).length}
+- Cash coverage gaps: ${cashAuditSummary.cashCoverageGaps} of ${cashAuditSummary.routeDateCombinationCount} route/date combinations returned zero ${cashProviders} cash results.
+- Returned cash result usable price rate: ${cashAuditSummary.returnedCashResultUsablePriceRate}%.
+- Returned cash options with missing/null/invalid prices: ${cashAuditSummary.returnedCashOptionsWithMissingPrices}.
+- Repeated returned-price stability: ${returnedPriceStabilityText}.
+- Repeated stable zero-result behavior: ${cashAuditSummary.stableZeroResultCount} route/date combinations.
 - Fields used for app price: CashFlightOption.cashPriceUsd, usually mirrored from priceBreakdown.total.amount when available
 - Confidence level: ${cashProviders.includes("Mock") ? "Medium for harness plumbing, Low for live production price behavior" : "Medium; provider is cached/aggregated, not a live quote"}
 
@@ -1093,6 +1190,7 @@ ${renderMarkdownTable(
     "Run 2 Usable Price %",
     "Min Price Delta",
     "Median Price Delta",
+    "Result Pattern",
     "Stable",
     "Provider Mode",
     "Notes",
@@ -1207,6 +1305,7 @@ async function main() {
     routes: ROUTES.map(([origin, destination]) => ({ origin, destination })),
     summary: {
       overallUsablePriceRate: getOverallUsablePriceRate(records),
+      cashAudit: getCashAuditSummary(records, tables),
       findings: getFindings(records),
       tables,
     },
@@ -1224,7 +1323,17 @@ async function main() {
   console.log(`Wrote ${markdownPath}`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+
+export {
+  buildTables,
+  compareRuns,
+  getCashAuditSummary,
+  getOverallUsablePriceRate,
+  renderMarkdownReport,
+};

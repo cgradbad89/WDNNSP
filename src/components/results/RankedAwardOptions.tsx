@@ -143,8 +143,76 @@ function getAwardOptionProviderSource(
 ): ProviderSourceState {
   return {
     isLive: option.freshness?.isLive ?? false,
-    providerLabel: option.provider?.providerLabel ?? option.airlineProgram,
+    providerLabel:
+      option.provider?.providerLabel ??
+      (option.source === "mock" ? "Mock Award Provider" : option.airlineProgram),
   };
+}
+
+function getCashFareEstimateLabel(option: ScoredCashOption): string {
+  if (option.source === "travelpayouts") {
+    return "Cached cash fare estimate";
+  }
+
+  return option.source === "mock" ? "Mock fare estimate" : "Cash fare estimate";
+}
+
+function getCashSourceDisclosure(
+  option: ScoredCashOption,
+  providerSource: ProviderSourceState,
+): RouteDetailsDrawerState["sourceDisclosure"] {
+  const isCachedEstimate =
+    option.source === "travelpayouts" || option.freshness?.isStale === true;
+
+  return [
+    { label: "Source", value: providerSource.providerLabel },
+    {
+      label: "Freshness/quality",
+      value: isCachedEstimate
+        ? "Cached fare estimate"
+        : providerSource.isLive
+          ? "Provider fare estimate"
+          : "Deterministic mock estimate",
+    },
+    {
+      label: "Taxes/fees",
+      value:
+        option.priceBreakdown?.taxesAndFees === undefined
+          ? "Not separately confirmed"
+          : formatCurrency(option.priceBreakdown.taxesAndFees.amount),
+    },
+    {
+      label: "Live quote",
+      value: "No",
+    },
+  ];
+}
+
+function getAwardSourceDisclosure(
+  option: ScoredAwardOption,
+): RouteDetailsDrawerState["sourceDisclosure"] {
+  const providerSource = getAwardOptionProviderSource(option);
+  const isMock = option.source === "mock" || !providerSource.isLive;
+  const isCppLimited =
+    isMock ||
+    option.taxesAndFeesUsd === undefined ||
+    option.centsPerPoint === undefined;
+
+  return [
+    { label: "Source", value: providerSource.providerLabel },
+    {
+      label: "Live award availability",
+      value: providerSource.isLive && option.source !== "mock"
+        ? "Provider-reported; verify directly"
+        : "No",
+    },
+    {
+      label: "CPP confidence",
+      value: isCppLimited
+        ? "Limited by mock data or missing taxes/fees"
+        : "Estimated from provider data",
+    },
+  ];
 }
 
 function ChevronIcon({
@@ -372,7 +440,7 @@ function CashOptionCard({
             {formatRecommendationLabel(option.recommendationLabel)}
           </span>
           <h3 className="mt-3 text-xl font-semibold tracking-tight text-[#14211b]">
-            Cash Fare Benchmark
+            Cash fare estimate
           </h3>
           <p className="mt-2 text-sm leading-6 text-[#637268]">
             {option.airline} - {getRouteSummary(option)} -{" "}
@@ -381,7 +449,7 @@ function CashOptionCard({
         </div>
         <div className="text-left lg:text-right">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#637268]">
-            {providerSource.isLive ? "Live cash price" : "Mock cash price"}
+            {getCashFareEstimateLabel(option)}
           </p>
           <p className="mt-1 text-3xl font-semibold text-[#14211b]">
             {formatCurrency(option.cashPriceUsd)}
@@ -494,6 +562,7 @@ export function RankedAwardOptions({
                     title: option.airlineProgram,
                     routeDetail: option.routeDetail,
                     providerSource: getAwardOptionProviderSource(option),
+                    sourceDisclosure: getAwardSourceDisclosure(option),
                   },
                   trigger,
                 )
@@ -512,9 +581,13 @@ export function RankedAwardOptions({
           onViewRoute={(trigger) =>
             onViewRoute(
               {
-                title: "Cash Fare Benchmark",
+                title: "Cash fare estimate",
                 routeDetail: cashOption.routeDetail,
                 providerSource: cashProviderSource,
+                sourceDisclosure: getCashSourceDisclosure(
+                  cashOption,
+                  cashProviderSource,
+                ),
               },
               trigger,
             )

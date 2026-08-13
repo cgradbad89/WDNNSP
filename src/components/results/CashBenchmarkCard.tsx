@@ -43,10 +43,10 @@ function getCashBenchmarkDescription(
   }`;
 
   if (cashOption.source === "travelpayouts") {
-    return `Cached Travelpayouts fare for ${passengerLabel}. This month-level benchmark is used to estimate redemption value after taxes and fees.`;
+    return `Cached Travelpayouts fare estimate for ${passengerLabel}. This month-level estimate may not include separately confirmed taxes or fees.`;
   }
 
-  return `Deterministic mock fare for ${passengerLabel}. This benchmark is used to calculate redemption value after taxes and fees.`;
+  return `Deterministic mock fare estimate for ${passengerLabel}. This benchmark is used to estimate redemption value after taxes and fees.`;
 }
 
 interface CashBenchmarkCardProps {
@@ -78,7 +78,7 @@ export function CashBenchmarkCard({
   return (
     <article className="rounded-lg border border-[#ead99d] bg-[#fffdf6] p-5 md:p-6">
       <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#5d4c1d]">
-        Lowest reasonable cash fare
+        Cash fare estimate
       </p>
       <div className="mt-3 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>

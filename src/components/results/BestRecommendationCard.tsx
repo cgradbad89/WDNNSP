@@ -184,7 +184,7 @@ export function BestRecommendationCard({
           value={formatCurrencyOrUnknown(bestAwardOption.taxesAndFeesUsd)}
         />
         <MetricCard
-          label="Cash"
+          label="Cash estimate"
           value={
             cashBenchmark === undefined
               ? "Unavailable"

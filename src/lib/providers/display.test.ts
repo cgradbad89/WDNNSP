@@ -250,7 +250,7 @@ describe("provider display helpers", () => {
     ]);
   });
 
-  it("describes an unavailable cash benchmark without hiding award results", () => {
+  it("describes an unavailable cash fare estimate without hiding award results", () => {
     expect(
       getNoProviderResultsDisplay({
         hasOtherResults: true,
@@ -258,8 +258,8 @@ describe("provider display helpers", () => {
         status: "no_results",
       }),
     ).toMatchObject({
-      title: "Cash benchmark unavailable",
-      description: expect.stringContaining("cached month-level cash fare"),
+      title: "Cash fare estimate unavailable",
+      description: expect.stringContaining("cached cash fare estimate"),
     });
   });
 

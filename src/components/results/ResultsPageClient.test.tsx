@@ -505,28 +505,27 @@ describe("ResultsPageClient sort control", () => {
 describe("ResultsPageClient live-vs-mock provider labels", () => {
   it("labels a live cash result with the real provider name and never says Mock anywhere on the page", async () => {
     await renderResultsWithOptions([heroOption, aeroplanOption], {
+      data: [unreportedFieldsCashOption],
       isLive: true,
       providerLabel: "Travelpayouts",
     });
 
-    // These are the exact strings the audit flagged as hardcoded "Mock",
-    // shown here replaced with the real provider name and live status -
-    // the same derivation ProviderSourceNote already used correctly.
-    expect(screen.getByText("Live cash price")).toBeInTheDocument();
-    expect(screen.queryByText("Mock cash price")).not.toBeInTheDocument();
+    expect(screen.getByText("Cached cash fare estimate")).toBeInTheDocument();
+    expect(screen.queryByText("Mock fare estimate")).not.toBeInTheDocument();
+    expect(screen.queryByText("Live cash price")).not.toBeInTheDocument();
     expect(screen.getByText("Travelpayouts · Live")).toBeInTheDocument();
 
-    const cashSourceNote = screen.getByLabelText("Cash benchmark source details");
+    const cashSourceNote = screen.getByLabelText("Cash fare estimate source details");
 
     expect(within(cashSourceNote).getByText("Travelpayouts")).toBeInTheDocument();
     expect(within(cashSourceNote).getByText("Live provider")).toBeInTheDocument();
     expect(within(cashSourceNote).queryByText("Demo data")).not.toBeInTheDocument();
   });
 
-  it("keeps the Mock cash price label and Mock source tile for genuinely mock cash data", async () => {
+  it("keeps the mock estimate label and Mock source tile for genuinely mock cash data", async () => {
     await renderResultsWithOptions([heroOption, aeroplanOption]);
 
-    expect(screen.getByText("Mock cash price")).toBeInTheDocument();
+    expect(screen.getByText("Mock fare estimate")).toBeInTheDocument();
     expect(
       screen.getByText("Mock", { selector: "p.text-lg" }),
     ).toBeInTheDocument();
@@ -542,7 +541,7 @@ describe("ResultsPageClient live-vs-mock provider labels", () => {
     });
 
     expect(
-      screen.getByText(/Mock Cash Provider did not have a cached/),
+      screen.getByText(/Mock Cash Provider did not have a cached cash fare estimate/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Travelpayouts/)).not.toBeInTheDocument();
   });
@@ -556,8 +555,22 @@ describe("ResultsPageClient live-vs-mock provider labels", () => {
     });
 
     expect(
-      screen.getByText(/Travelpayouts did not have a cached/),
+      screen.getByText(/Travelpayouts did not have a cached cash fare estimate/),
     ).toBeInTheDocument();
+  });
+
+  it("does not render missing cash as $0 or a numeric CPP", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption], {
+      data: [],
+      isLive: true,
+      providerLabel: "Travelpayouts",
+      status: "no_results",
+    });
+
+    expect(screen.getByText("Cash fare estimate unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("$0")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.0")).not.toBeInTheDocument();
+    expect(screen.getAllByText("N/A").length).toBeGreaterThan(0);
   });
 
   it("shows the real provider name instead of 'mock' in the route details drawer for a live-sourced row missing route detail", async () => {
@@ -599,6 +612,47 @@ describe("ResultsPageClient live-vs-mock provider labels", () => {
 
     expect(
       screen.getByText("Route details are not available for this mock option."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows source and freshness disclosure for a cached Travelpayouts cash estimate in the details drawer", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption], {
+      data: [unreportedFieldsCashOption],
+      isLive: true,
+      providerLabel: "Travelpayouts",
+    });
+
+    const cashCard = screen
+      .getByText("Cash fare estimate", { selector: "h3" })
+      .closest("article") as HTMLElement;
+    fireEvent.click(
+      within(cashCard).getByRole("button", { name: "View route details" }),
+    );
+
+    const disclosure = screen.getByLabelText("Provider source disclosure");
+
+    expect(within(disclosure).getByText("Travelpayouts")).toBeInTheDocument();
+    expect(within(disclosure).getByText("Cached fare estimate")).toBeInTheDocument();
+    expect(within(disclosure).getByText("Not separately confirmed")).toBeInTheDocument();
+    expect(within(disclosure).getByText("No")).toBeInTheDocument();
+  });
+
+  it("shows mock award source and limited CPP confidence in the details drawer", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption]);
+
+    const mockRow = screen
+      .getByText("Air Canada Aeroplan")
+      .closest("article") as HTMLElement;
+    fireEvent.click(
+      within(mockRow).getByRole("button", { name: "View route details" }),
+    );
+
+    const disclosure = screen.getByLabelText("Provider source disclosure");
+
+    expect(within(disclosure).getByText("Mock Award Provider")).toBeInTheDocument();
+    expect(within(disclosure).getByText("Live award availability")).toBeInTheDocument();
+    expect(
+      within(disclosure).getByText("Limited by mock data or missing taxes/fees"),
     ).toBeInTheDocument();
   });
 });

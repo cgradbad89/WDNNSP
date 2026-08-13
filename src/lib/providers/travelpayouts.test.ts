@@ -217,6 +217,16 @@ describe("searchTravelpayoutsCashFlights", () => {
     expect(first.cashPriceUsd).toBe(812);
     expect(first.source).toBe("travelpayouts");
     expect(first.departureDateTime).toBe("2027-05-01T10:00:00Z");
+    expect(first.freshness).toMatchObject({
+      isLive: true,
+      isStale: true,
+      staleReason: expect.stringContaining("cached and aggregated"),
+    });
+    expect(first.priceBreakdown?.total).toEqual({
+      amount: 812,
+      currency: "USD",
+    });
+    expect(first.priceBreakdown?.taxesAndFees).toBeUndefined();
 
     expect(second.airline).toBe("UA");
     expect(second.flightNumbers).toEqual(["UA79"]);

@@ -10,6 +10,10 @@ export interface RouteDetailsDrawerState {
   title: string;
   routeDetail?: RouteDetail;
   providerSource: ProviderSourceState;
+  sourceDisclosure?: Array<{
+    label: string;
+    value: string;
+  }>;
 }
 
 function getMissingRouteDetailMessage(
@@ -131,6 +135,29 @@ export function RouteDetailsDrawer({
             {getMissingRouteDetailMessage(modal.providerSource)}
           </p>
         )}
+
+        {modal.sourceDisclosure && modal.sourceDisclosure.length > 0 ? (
+          <div
+            aria-label="Provider source disclosure"
+            className="mt-5 rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4"
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#637268]">
+              Source and freshness
+            </p>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+              {modal.sourceDisclosure.map((item) => (
+                <div key={item.label}>
+                  <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
+                    {item.label}
+                  </dt>
+                  <dd className="mt-1 text-sm font-semibold leading-5 text-[#14211b]">
+                    {item.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ) : null}
       </section>
     </div>
   );

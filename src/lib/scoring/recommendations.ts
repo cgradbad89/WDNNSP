@@ -277,7 +277,7 @@ function buildScoreExplanation(
 
   if (centsPerPoint >= 3) {
     explanation.push(
-      `This redemption is strong at ${centsPerPoint.toFixed(1)} cpp against the cash benchmark.`,
+      `This redemption is strong at ${centsPerPoint.toFixed(1)} cpp against the cash fare estimate.`,
     );
   }
 

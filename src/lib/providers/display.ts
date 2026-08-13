@@ -117,15 +117,15 @@ function getMissingCashDescription(
   providerLabel: string,
 ): string {
   if (hasOtherResults) {
-    return `Award options are still shown, but ${providerLabel} did not have a cached month-level cash fare for this route, so WDNNSP cannot calculate a cash-backed cents-per-point value.`;
+    return `Award options are still shown, but ${providerLabel} did not have a cached cash fare estimate for this route. Try another date or check a booking site for live fares; WDNNSP cannot calculate a cash-backed cents-per-point value from missing cash data.`;
   }
 
-  return "The cash provider did not return a cached month-level fare benchmark for this route.";
+  return "No cached cash fare found for this route. Try another date or check a booking site for live fares.";
 }
 
 function getMissingAwardDescription(hasOtherResults: boolean): string {
   if (hasOtherResults) {
-    return "Use the cash benchmark as a price check, but no award recommendation is available from the current provider data.";
+    return "Use the cash fare estimate as a price check, but no award recommendation is available from the current provider data.";
   }
 
   return "The award provider did not return award availability for this search.";
@@ -199,7 +199,7 @@ export function getNoProviderResultsDisplay({
     return {
       status,
       tone: statusDisplays[status].tone,
-      title: "Cash benchmark unavailable",
+      title: "Cash fare estimate unavailable",
       description: getMissingCashDescription(hasOtherResults, providerLabel),
     };
   }

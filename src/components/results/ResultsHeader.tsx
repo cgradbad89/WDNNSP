@@ -34,11 +34,11 @@ export function ResultsHeader({
       : `No provider results for ${selectedSearchName}`;
   const description =
     bestAwardOption && cashOption
-      ? "Cash and award provider data are compared for the active search, then ranked with the weighted recommendation engine."
+      ? "Cash fare estimates and award provider data are compared for the active search, then ranked with the weighted recommendation engine."
       : bestAwardOption
-        ? "Award options are ranked for the active search, but the cash provider did not return a benchmark for cash-backed cents-per-point."
+        ? "Award options are ranked for the active search, but the cash provider did not return a fare estimate for cash-backed cents-per-point."
         : cashOption
-          ? "A cash benchmark is available for this search, but no award recommendation is available from the current provider data."
+          ? "A cash fare estimate is available for this search, but no award recommendation is available from the current provider data."
           : "The current providers did not return usable cash or award results for this search.";
 
   return (
@@ -74,7 +74,7 @@ export function ResultsHeader({
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#637268]">
-              Cash benchmark
+              Cash estimate
             </p>
             <p className="mt-2 text-xl font-semibold text-[#14211b]">
               {cashOption ? formatCurrency(cashOption.cashPriceUsd) : "None"}

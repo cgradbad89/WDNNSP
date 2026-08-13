@@ -453,7 +453,7 @@ export function getMockCashOptionForSearch(
   const cashOption: CashFlightOption = {
     id: `mock-cash-${getPrimaryOrigin(search)}-${getPrimaryDestination(search)}`,
     source: "mock",
-    airline: isTokyoRoute ? "ANA / United benchmark" : "Mock cash benchmark",
+    airline: isTokyoRoute ? "ANA / United estimate" : "Mock cash estimate",
     flightNumbers: isTokyoRoute ? ["UA803", "NH101"] : ["MOCK100"],
     origin: getPrimaryOrigin(search),
     destination: getPrimaryDestination(search),

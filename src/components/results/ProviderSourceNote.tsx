@@ -39,6 +39,7 @@ export function ProviderSourceNote<T>({
   label,
 }: ProviderSourceNoteProps<T>): JSX.Element {
   const isStale = isStaleProviderData(envelope);
+  const isCashSource = label.toLowerCase().includes("cash");
 
   return (
     <aside
@@ -60,8 +61,11 @@ export function ProviderSourceNote<T>({
       </div>
       {isStale ? (
         <p className="mt-2 font-medium text-[#5d4c1d]">
-          This provider marked the data as stale. Verify prices and award space
-          directly before booking or transferring points.
+          {isCashSource
+            ? "This provider marked the data as stale. Cash fare estimates may come from cached provider data and may not include separately confirmed taxes or fees."
+            : "This provider marked the data as stale."}{" "}
+          Verify prices and award space directly before booking or transferring
+          points.
         </p>
       ) : null}
     </aside>
