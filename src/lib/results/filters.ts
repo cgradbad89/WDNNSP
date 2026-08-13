@@ -32,13 +32,22 @@ export function applyResultsFilters(
       return false;
     }
 
-    if (filters.maxOneStop && option.stops > 1) {
+    // Unconfirmed stop count can't be proven to satisfy "max one stop", so
+    // it is excluded rather than silently passed through as if it were
+    // known to be <=1 stop.
+    if (
+      filters.maxOneStop &&
+      (option.stops === undefined || option.stops > 1)
+    ) {
       return false;
     }
 
+    // Unreported fees can't be confirmed as low, so they are excluded
+    // rather than silently passed through as if they were known to be $0.
     if (
       filters.hideHighFeeAwards &&
-      option.taxesAndFeesUsd > HIGH_FEE_AWARD_THRESHOLD_USD
+      (option.taxesAndFeesUsd === undefined ||
+        option.taxesAndFeesUsd > HIGH_FEE_AWARD_THRESHOLD_USD)
     ) {
       return false;
     }

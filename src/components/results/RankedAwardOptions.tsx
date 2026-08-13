@@ -48,16 +48,46 @@ function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
 }
 
+function formatCurrencyOrUnknown(value: number | undefined): string {
+  return value === undefined ? "Not reported" : formatCurrency(value);
+}
+
 function formatNumber(value: number): string {
   return numberFormatter.format(value);
 }
 
-function formatStops(stops: number): string {
+// Stop count is only claimed as "Nonstop" when a provider actually confirmed
+// it - an unconfirmed stop count must never read as a nonstop claim.
+function formatStops(stops: number | undefined): string {
+  if (stops === undefined) {
+    return "Stops not confirmed";
+  }
+
   if (stops <= 0) {
     return "Nonstop";
   }
 
   return `${stops} stop${stops === 1 ? "" : "s"}`;
+}
+
+function formatDurationOrUnknown(minutes: number | undefined): string {
+  return minutes === undefined ? "Duration not reported" : formatDuration(minutes);
+}
+
+function formatConfidence(
+  confidence: ScoredAwardOption["confidence"],
+): string {
+  return confidence === undefined ? "unreported" : confidence;
+}
+
+// Cash-side cabin is only a confirmed fare attribute when the provider says
+// so (cabinConfirmed !== false). Otherwise it's just the cabin the user
+// searched for, echoed back - label it as such rather than implying it was
+// confirmed.
+function formatCashCabin(option: ScoredCashOption): string {
+  const label = cabinLabels[option.cabin];
+
+  return option.cabinConfirmed === false ? `Searched: ${label}` : label;
 }
 
 function formatRecommendationLabel(label: RecommendationLabel): string {
@@ -186,7 +216,7 @@ function AwardOptionRow({
               {formatRecommendationLabel(option.recommendationLabel)}
             </span>
             <span className="rounded-md bg-[#f7faf6] px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.1em] text-[#637268]">
-              {option.confidence} confidence
+              {formatConfidence(option.confidence)} confidence
             </span>
             {isTransferRequired ? (
               <span className="rounded-md bg-[#fff9df] px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.1em] text-[#5d4c1d]">
@@ -218,7 +248,7 @@ function AwardOptionRow({
             </p>
             <p className="text-sm font-semibold text-[#14211b]">
               {formatNumber(option.pointsRequired)} +{" "}
-              {formatCurrency(option.taxesAndFeesUsd)}
+              {formatCurrencyOrUnknown(option.taxesAndFeesUsd)}
             </p>
           </div>
           <button
@@ -258,10 +288,9 @@ function AwardOptionRow({
                 Duration
               </p>
               <p className="mt-2 text-lg font-semibold text-[#14211b]">
-                {formatDuration(
+                {formatDurationOrUnknown(
                   option.routeDetail?.totalDurationMinutes ??
-                    option.durationMinutes ??
-                    0,
+                    option.durationMinutes,
                 )}
               </p>
             </div>
@@ -347,7 +376,7 @@ function CashOptionCard({
           </h3>
           <p className="mt-2 text-sm leading-6 text-[#637268]">
             {option.airline} - {getRouteSummary(option)} -{" "}
-            {cabinLabels[option.cabin]} - {formatStops(option.stops)}
+            {formatCashCabin(option)} - {formatStops(option.stops)}
           </p>
         </div>
         <div className="text-left lg:text-right">
@@ -371,9 +400,11 @@ function CashOptionCard({
         </div>
         <div className="rounded-md border border-[#ead99d] bg-white p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
-            Fees
+            Taxes/fees
           </p>
-          <p className="mt-2 text-lg font-semibold text-[#14211b]">Included</p>
+          <p className="mt-2 text-lg font-semibold text-[#14211b]">
+            {formatCurrencyOrUnknown(option.priceBreakdown?.taxesAndFees?.amount)}
+          </p>
         </div>
         <div className="rounded-md border border-[#ead99d] bg-white p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
@@ -388,7 +419,7 @@ function CashOptionCard({
             Duration
           </p>
           <p className="mt-2 text-lg font-semibold text-[#14211b]">
-            {formatDuration(
+            {formatDurationOrUnknown(
               option.routeDetail?.totalDurationMinutes ??
                 option.durationMinutes,
             )}

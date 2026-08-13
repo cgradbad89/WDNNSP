@@ -297,10 +297,17 @@ type CashFlightOption = {
   origin: string;
   destination: string;
   departureDateTime: string;
-  arrivalDateTime: string;
-  durationMinutes: number;
-  stops: number;
+  // Undefined means the provider did not report this field. Never
+  // fabricated as a placeholder (0-duration, same-as-departure, etc.) -
+  // see the August 13, 2026 unreported-fields session below.
+  arrivalDateTime?: string;
+  durationMinutes?: number;
+  stops?: number;
   cabin: Cabin;
+  // False: `cabin` is only the cabin the user searched for, echoed back by
+  // a provider that doesn't confirm cabin - not a confirmed fare
+  // attribute. True/omitted: provider-confirmed.
+  cabinConfirmed?: boolean;
   cashPriceUsd: number;
   price?: PriceMoney;
   priceBreakdown?: {
@@ -320,6 +327,13 @@ type CashFlightOption = {
 `cashPriceUsd` remains the normalized value used by current scoring. Richer
 money, provider, freshness, itinerary, and limitation fields are modeled for
 future live provider normalization, but the app still uses mock cash data.
+
+As of the August 13, 2026 unreported-fields session, `arrivalDateTime`,
+`durationMinutes`, and `stops` are optional and must be left `undefined`
+when a provider genuinely does not report them - never fabricated as a
+placeholder value. `cabinConfirmed: false` marks `cabin` as the user's
+searched cabin echoed back rather than a provider-confirmed fare attribute
+(currently set by `src/lib/providers/travelpayouts.ts`; see 7.3).
 
 ---
 
@@ -357,7 +371,10 @@ type AwardFlightOption = {
   arrivalDateTime: string;
   cabin: Cabin;
   pointsRequired: number;
-  taxesAndFeesUsd: number;
+  // Undefined means the provider did not report this field - never a
+  // fabricated placeholder (0 fees, 0 stops, "medium" confidence). See the
+  // August 13, 2026 unreported-fields session below.
+  taxesAndFeesUsd?: number;
   fees?: PriceMoney;
   taxesAndFees?: PriceMoney;
   transferSources: string[];
@@ -365,10 +382,10 @@ type AwardFlightOption = {
   sourceProgramLabel?: string;
   cashComparableUsd?: number;
   centsPerPoint?: number;
-  stops: number;
+  stops?: number;
   durationMinutes?: number;
   itinerary?: FlightItinerary;
-  confidence: "high" | "medium" | "low";
+  confidence?: "high" | "medium" | "low";
   availabilityStatus?: "available" | "limited" | "waitlist" | "unavailable" | "unknown" | "stale";
   availableSeats?: number;
   limitations?: ProviderLimitation[];
@@ -381,6 +398,12 @@ The app must clearly label confidence/freshness of award availability.
 `pointsRequired` and `taxesAndFeesUsd` remain the normalized fields used by
 current cents-per-point and recommendation scoring. Freshness/staleness and
 availability status are modeled but are not yet deeply scored.
+
+As of the August 13, 2026 unreported-fields session, `taxesAndFeesUsd`,
+`stops`, and `confidence` are optional and must be left `undefined` when a
+provider genuinely does not report them - never fabricated as a placeholder
+(this had previously let unreported fields score as the best case; see 5.8
+and 15).
 
 ---
 
@@ -439,6 +462,23 @@ This can be tuned over time.
 Provider freshness, stale-data status, mixed-cabin itinerary metadata, and
 provider coverage quality should be visible in the Results UI, but they are not
 yet weighted in the MVP scoring model.
+
+As of the August 13, 2026 unreported-fields session, `scoreAwardOptions`
+(`src/lib/scoring/recommendations.ts`) treats `undefined` `taxesAndFeesUsd`,
+`stops`, and `confidence` as unknown and scores them at or below the worst
+known tier for that dimension (never as the best case, e.g. never as $0
+fees, a confirmed nonstop, or medium confidence) - matching the existing
+`Number.POSITIVE_INFINITY`-for-missing-duration pattern in
+`src/lib/results/sorting.ts`. `calculateCentsPerPoint`
+(`src/lib/scoring/cpp.ts`) returns `undefined`, not a number computed as if
+fees were $0, when `taxesAndFeesUsd` is unreported. The "Lowest Fees" badge
+and "Taxes and fees are low" explanation copy only fire when
+`taxesAndFeesUsd` is a real reported value. `src/lib/results/filters.ts`'s
+"max one stop" and "hide high-fee awards" filters exclude options with
+unconfirmed `stops`/`taxesAndFeesUsd` rather than passing them through as if
+confirmed low/nonstop. `src/lib/results/sorting.ts`'s "lowest taxes/fees"
+sort places unreported-fee options last, matching its existing
+unknown-duration-sorts-last behavior.
 
 ---
 
@@ -539,6 +579,16 @@ Results page layout, as of the August 12, 2026 results-page redesign session:
   explanations, and warnings previously always shown - no information was
   removed, only progressively disclosed. "View route details" remains a
   separate, always-visible action per row.
+
+As of the August 13, 2026 unreported-fields session, per-field disclosure
+replaced the fabricated defaults an earlier audit found: award rows and the
+cash benchmark row show "Duration not reported" (not `0m`), "Stops not
+confirmed" (not a claimed "Nonstop"), an "unreported confidence" badge
+(not a fabricated confidence tier), and a real "Taxes/fees" value or "Not
+reported" (the previous hardcoded "Fees: Included" tile on the cash card
+was removed entirely — no current provider supports that claim). An
+unconfirmed cash cabin (`cabinConfirmed === false`) is labeled "Searched:
+<cabin>" rather than shown as a bare, seemingly-confirmed cabin name.
 
 ---
 
@@ -682,12 +732,15 @@ of the browser.
   token is sent via the `X-Access-Token` header, never as a query param.
 - The endpoint returns cached, aggregated prices, not a live per-search shop
   against airline inventory, and it does not confirm arrival time, duration,
-  stop count, or cabin class. Mapped `CashFlightOption` results set
-  `durationMinutes: 0`, `arrivalDateTime` equal to `departureDateTime`, and
-  `stops: 0` as explicit placeholders (flagged via a `travelpayouts_partial_itinerary`
-  limitation) and `cabin` to the requested search cabin, since the provider
-  does not confirm it. This needs product-owner review before the Results UI
-  leans on those fields for a live-cash card.
+  stop count, or cabin class. As of the August 13, 2026 unreported-fields
+  session, mapped `CashFlightOption` results leave `durationMinutes`,
+  `arrivalDateTime`, and `stops` `undefined` (never a fabricated 0-duration/
+  same-as-departure/0-stops placeholder), flagged via a
+  `travelpayouts_partial_itinerary` limitation. `cabin` is still set to the
+  requested search cabin (the shared type requires a value), but
+  `cabinConfirmed: false` marks it as an echoed-back search input, not a
+  confirmed fare attribute - the Results UI must not present it as
+  confirmed.
 - Status mapping: a successful response with at least one result maps to
   `status: "stale"` (not `"success"`) because this endpoint is always
   cache-based — consistent with the existing `"stale"` convention in
@@ -750,12 +803,17 @@ provider responses stay server-only and are never sent to the browser.
   count) — never collapsed to a single cabin.
 - Seats.aero Cached Search reports date-level availability, not scheduled
   flight times, taxes/fees, or exact stop counts (only a per-cabin nonstop
-  boolean). Mapped `AwardFlightOption` results set `departureDateTime`/
-  `arrivalDateTime` to midnight UTC on the reported date, `taxesAndFeesUsd: 0`,
-  and `stops: 0` as explicit placeholders (flagged via limitations), matching
-  the placeholder convention already used in
-  `src/lib/providers/travelpayouts.ts`. This needs product-owner review
-  before the Results UI leans on those fields for a live award card.
+  boolean). Mapped `AwardFlightOption` results still set `departureDateTime`/
+  `arrivalDateTime` to midnight UTC on the reported date as an explicit
+  placeholder (flagged via limitations) - the Results UI must not present
+  that as a scheduled flight time. As of the August 13, 2026
+  unreported-fields session, `taxesAndFeesUsd` and `confidence` are left
+  `undefined` rather than fabricated (`taxesAndFeesUsd: 0`, a hardcoded
+  `confidence: "medium"` for every result) - the app has no genuine fee or
+  confidence signal from this endpoint, and scoring must treat that as
+  unknown, not the best case. `stops` is a real reported `0` only when the
+  per-cabin direct flag confirms nonstop; otherwise it is left `undefined`
+  (not a fabricated `0`), flagged via limitations when unconfirmed.
 - `transferSources` is now populated for live Seats.aero results. Each
   result's `Source` mileage-program slug (e.g. `"aeroplan"`) is mapped via
   `src/data/seatsAeroSourceMap.ts` to the airline program name used as
@@ -1528,6 +1586,7 @@ Exit criteria:
 - Point sufficiency checks aggregate balances across all eligible transfer currencies rather than evaluating each currency independently.
 - `TransferBalance` carries `estimatedTransferTime` through to the recommendation output.
 - Transfer ratio math floors to whole points — partial/fractional point amounts are never shown or recommended.
+- An unreported field (`taxesAndFeesUsd`, `stops`, `confidence` on award options; `durationMinutes`, `arrivalDateTime`, `stops` on cash options) is `undefined`, never a fabricated default. Scoring and display must treat `undefined` as unknown and score/label it at or below the worst known real value for that dimension — an option with entirely unreported fields must never out-rank an option with honestly-reported, less-flattering real numbers. See 5.8 and 5.9.
 
 The app should produce human-readable explanations.
 
@@ -1640,18 +1699,27 @@ Example test cases:
 These do not block Phase 1.
 
 1. ~~Which cash flight API should be used first?~~ Answered: Travelpayouts
-   Data API (see section 7.3), gated behind `ENABLE_LIVE_CASH_PROVIDER`. Open
-   follow-up: the `prices/cheap` endpoint doesn't confirm arrival time,
-   duration, stop count, or cabin — product owner should decide whether/how
-   the Results UI should handle those placeholder fields for live cash
-   results.
+   Data API (see section 7.3), gated behind `ENABLE_LIVE_CASH_PROVIDER`.
+   ~~Open follow-up: the `prices/cheap` endpoint doesn't confirm arrival
+   time, duration, stop count, or cabin — product owner should decide
+   whether/how the Results UI should handle those placeholder fields for
+   live cash results.~~ Answered by the August 13, 2026 unreported-fields
+   session: these fields are left `undefined` (never guessed), the Results
+   UI shows explicit "not reported"/"not confirmed" copy per field, and
+   `cabin` is labeled as the searched cabin rather than a confirmed fare
+   attribute.
 2. ~~Is Seats.aero API access available and affordable?~~ Answered: yes, a
    Pro-tier account is in use, integrated via Cached Search (see section 7.4),
-   gated behind `ENABLE_LIVE_AWARD_PROVIDER`. Open follow-ups: Cached Search
-   doesn't confirm scheduled flight times, taxes/fees, exact stop counts, or
-   which transferable point programs map to a given mileage program —
-   product owner should decide whether/how the Results UI should handle
-   those placeholder fields, and whether a mileage-program-to-transfer-partner
+   gated behind `ENABLE_LIVE_AWARD_PROVIDER`. ~~Open follow-ups: Cached
+   Search doesn't confirm scheduled flight times, taxes/fees, exact stop
+   counts, or which transferable point programs map to a given mileage
+   program — product owner should decide whether/how the Results UI should
+   handle those placeholder fields~~ Partially answered by the August 13,
+   2026 unreported-fields session: `taxesAndFeesUsd`, unconfirmed `stops`,
+   and `confidence` are left `undefined` (never guessed) and scored/labeled
+   as unknown rather than the best case; scheduled flight times remain a
+   placeholder (midnight UTC on the reported date) pending product-owner
+   review. Still open: whether a mileage-program-to-transfer-partner
    mapping is worth building. Also open: whether the always-`"success"`
    status mapping for live Cached Search results (vs. Travelpayouts'
    always-`"stale"`) is the right call, since Cached Search has no

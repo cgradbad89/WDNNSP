@@ -117,7 +117,14 @@ function getValueScore(centsPerPoint: number): number {
   return Math.min(100, centsPerPoint * 25);
 }
 
-function getConvenienceScore(stops: number): number {
+function getConvenienceScore(stops: number | undefined): number {
+  // Unconfirmed stop count is unknown, not nonstop. Scored below the worst
+  // known tier (3+ stops = 25) so an unreported option never ties or beats
+  // an option with an honestly-reported bad stop count.
+  if (stops === undefined) {
+    return 0;
+  }
+
   if (stops <= 0) {
     return 100;
   }
@@ -136,6 +143,13 @@ function getConvenienceScore(stops: number): number {
 function getAvailabilityConfidenceScore(
   confidence: AwardFlightOption["confidence"],
 ): number {
+  // No confidence signal from the provider is unknown, not "medium".
+  // Scored below the worst known tier ("low" = 35) so an unreported option
+  // never ties or beats an option with honestly-reported low confidence.
+  if (confidence === undefined) {
+    return 0;
+  }
+
   if (confidence === "high") {
     return 100;
   }
@@ -267,7 +281,10 @@ function buildScoreExplanation(
     );
   }
 
-  if (awardOption.taxesAndFeesUsd <= 100) {
+  if (
+    awardOption.taxesAndFeesUsd !== undefined &&
+    awardOption.taxesAndFeesUsd <= 100
+  ) {
     explanation.push("Taxes and fees are low for this award option.");
   }
 
@@ -289,6 +306,16 @@ function buildScoreWarnings(
   if (awardOption.confidence === "low") {
     warnings.push(
       "Availability confidence is low, so verify this option before making plans.",
+    );
+  } else if (awardOption.confidence === undefined) {
+    warnings.push(
+      "Availability confidence is not reported for this option, so verify it directly before making plans.",
+    );
+  }
+
+  if (awardOption.taxesAndFeesUsd === undefined) {
+    warnings.push(
+      "Taxes and fees are not reported for this option and are not included in its value score.",
     );
   }
 
@@ -368,10 +395,20 @@ function assignRecommendationLabels(
   }
 
   const lowestFeesOption = nonTopAffordableOptions
-    .filter((option) => option.id !== bestValueOption?.id)
+    // Unreported taxesAndFeesUsd can't be confirmed as low, so it is never
+    // eligible for the "Lowest Fees" label - only real reported values compete.
+    .filter(
+      (option) =>
+        option.id !== bestValueOption?.id &&
+        option.taxesAndFeesUsd !== undefined,
+    )
     .reduce<(typeof nonTopAffordableOptions)[number] | undefined>(
       (currentLowest, option) => {
-        if (!currentLowest || option.taxesAndFeesUsd < currentLowest.taxesAndFeesUsd) {
+        if (
+          !currentLowest ||
+          (option.taxesAndFeesUsd as number) <
+            (currentLowest.taxesAndFeesUsd as number)
+        ) {
           return option;
         }
 
@@ -391,7 +428,9 @@ function assignRecommendationLabels(
       ...option,
       recommendationLabel:
         labels.get(option.id) ??
-        (option.taxesAndFeesUsd <= 100 ? "lowest_fees" : "best_value"),
+        (option.taxesAndFeesUsd !== undefined && option.taxesAndFeesUsd <= 100
+          ? "lowest_fees"
+          : "best_value"),
     };
   });
 }

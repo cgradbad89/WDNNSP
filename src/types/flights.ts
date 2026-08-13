@@ -39,10 +39,18 @@ export interface CashFlightOption {
   origin: string;
   destination: string;
   departureDateTime: string;
-  arrivalDateTime: string;
-  durationMinutes: number;
-  stops: number;
+  // Undefined means the provider did not report this field - never fabricate
+  // a value (0, same-as-departure, etc.) as a placeholder. See
+  // src/lib/providers/travelpayouts.ts for a provider that genuinely can't
+  // confirm these.
+  arrivalDateTime?: string;
+  durationMinutes?: number;
+  stops?: number;
   cabin: Cabin;
+  // True/omitted: cabin is a provider-confirmed fare attribute. False: the
+  // provider does not confirm cabin, and `cabin` is only the cabin the user
+  // searched for, echoed back - do not present it as confirmed.
+  cabinConfirmed?: boolean;
   cashPriceUsd: number;
   price?: PriceMoney;
   priceBreakdown?: {

@@ -203,7 +203,72 @@ describe("searchSeatsAeroAwardFlights", () => {
     expect(envelope.data).toHaveLength(1);
     expect(envelope.data[0].cabin).toBe("business");
     expect(envelope.data[0].availableSeats).toBe(2);
+    // JDirect: true confirms a real nonstop, so stops is a real reported 0.
     expect(envelope.data[0].stops).toBe(0);
+  });
+
+  it("leaves stops undefined (not a fabricated 0) when the cabin's direct flag does not confirm nonstop", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          baseResult({
+            JAvailable: true,
+            JMileageCost: "75000",
+            JDirect: false,
+          }),
+        ],
+        count: 1,
+        hasMore: false,
+        cursor: 0,
+      }),
+    );
+
+    const envelope = await searchSeatsAeroAwardFlights(search);
+
+    expect(envelope.status).toBe("success");
+    expect(envelope.data[0].stops).toBeUndefined();
+  });
+
+  it("leaves taxesAndFeesUsd undefined rather than fabricating $0", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          baseResult({
+            JAvailable: true,
+            JMileageCost: "75000",
+            JDirect: true,
+          }),
+        ],
+        count: 1,
+        hasMore: false,
+        cursor: 0,
+      }),
+    );
+
+    const envelope = await searchSeatsAeroAwardFlights(search);
+
+    expect(envelope.data[0].taxesAndFeesUsd).toBeUndefined();
+  });
+
+  it("leaves confidence undefined rather than fabricating a hardcoded 'medium' for every result", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          baseResult({
+            JAvailable: true,
+            JMileageCost: "75000",
+            JDirect: true,
+          }),
+        ],
+        count: 1,
+        hasMore: false,
+        cursor: 0,
+      }),
+    );
+
+    const envelope = await searchSeatsAeroAwardFlights(search);
+
+    expect(envelope.data[0].confidence).toBeUndefined();
   });
 
   it("maps an empty data array to no_results", async () => {

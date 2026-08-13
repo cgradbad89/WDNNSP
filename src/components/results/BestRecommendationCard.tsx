@@ -28,6 +28,10 @@ function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
 }
 
+function formatCurrencyOrUnknown(value: number | undefined): string {
+  return value === undefined ? "Not reported" : formatCurrency(value);
+}
+
 function formatNumber(value: number): string {
   return numberFormatter.format(value);
 }
@@ -177,7 +181,7 @@ export function BestRecommendationCard({
         />
         <MetricCard
           label="Taxes"
-          value={formatCurrency(bestAwardOption.taxesAndFeesUsd)}
+          value={formatCurrencyOrUnknown(bestAwardOption.taxesAndFeesUsd)}
         />
         <MetricCard
           label="Cash"

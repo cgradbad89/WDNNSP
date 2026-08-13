@@ -143,7 +143,14 @@ function addMockAwardMetadata(
   option: AwardFlightOption,
   passengers: number,
 ): AwardFlightOption {
-  const fees = createUsdMoney(option.taxesAndFeesUsd);
+  // Mock award options always set taxesAndFeesUsd explicitly (see the
+  // literals below), but the shared AwardFlightOption type now allows it to
+  // be undefined for providers that don't report it, so this guards rather
+  // than assuming a value is present.
+  const fees =
+    option.taxesAndFeesUsd !== undefined
+      ? createUsdMoney(option.taxesAndFeesUsd)
+      : undefined;
   const sourceProgramId = getAwardProgramId(option.airlineProgram);
 
   return {
@@ -155,8 +162,7 @@ function addMockAwardMetadata(
     freshness: { ...MOCK_FRESHNESS },
     availabilityStatus: "available",
     availableSeats: passengers,
-    fees,
-    taxesAndFees: fees,
+    ...(fees ? { fees, taxesAndFees: fees } : {}),
     ...(sourceProgramId ? { sourceProgramId } : {}),
     sourceProgramLabel: option.airlineProgram,
     marketingAirline: option.operatingAirline ?? option.airlineProgram,
@@ -399,7 +405,10 @@ function makeCashOptionNonstop(
     flightNumbers: [option.flightNumbers[0] ?? "MOCK100"],
     routeDetail: createNonstopRouteDetail({
       destination: option.destination,
-      durationMinutes: option.durationMinutes,
+      // Mock cash options always set durationMinutes explicitly before this
+      // runs; the fallback only satisfies the shared (now-optional) type.
+      durationMinutes:
+        option.durationMinutes ?? option.routeDetail?.totalDurationMinutes ?? 0,
       flightNumber: option.flightNumbers[0] ?? "MOCK100",
       origin: option.origin,
     }),

@@ -31,6 +31,12 @@ function getDurationMinutes(option: ScoredAwardOption): number {
   );
 }
 
+function getTaxesAndFeesUsd(option: ScoredAwardOption): number {
+  // Options with unreported fees sort to the end rather than falsely
+  // appearing "lowest fees" at $0.
+  return option.taxesAndFeesUsd ?? Number.POSITIVE_INFINITY;
+}
+
 /**
  * Reorders already-scored, already-labeled award options for display.
  * Does not touch score/recommendationLabel - those are assigned once by
@@ -51,7 +57,7 @@ export function sortAwardOptions(
   if (sort === "lowest_fees") {
     return options.toSorted(
       (firstOption, secondOption) =>
-        firstOption.taxesAndFeesUsd - secondOption.taxesAndFeesUsd,
+        getTaxesAndFeesUsd(firstOption) - getTaxesAndFeesUsd(secondOption),
     );
   }
 

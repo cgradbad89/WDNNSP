@@ -215,6 +215,30 @@ async function renderResultsWithOptions(
   await screen.findByText("Transfer points to United MileagePlus");
 }
 
+const unreportedFieldsAwardOption = createAwardOption({
+  id: "opt-unreported",
+  airlineProgram: "Turkish Miles&Smiles",
+  source: "seats_aero",
+  pointsRequired: 50000,
+  taxesAndFeesUsd: undefined,
+  stops: undefined,
+  confidence: undefined,
+  durationMinutes: undefined,
+});
+
+const unreportedFieldsCashOption: CashFlightOption = {
+  id: "cash-unreported",
+  source: "travelpayouts",
+  airline: "Live Cached Fare",
+  flightNumbers: ["NH6"],
+  origin: "IAD",
+  destination: "NRT",
+  departureDateTime: "2027-05-01T09:00:00-04:00",
+  cabin: "business",
+  cabinConfirmed: false,
+  cashPriceUsd: 5200,
+};
+
 function getRowProgramNames(): string[] {
   return screen
     .getAllByRole("heading", { level: 4 })
@@ -576,5 +600,64 @@ describe("ResultsPageClient live-vs-mock provider labels", () => {
     expect(
       screen.getByText("Route details are not available for this mock option."),
     ).toBeInTheDocument();
+  });
+});
+
+describe("ResultsPageClient unreported-field disclosure", () => {
+  it("shows honest 'not reported'/'not confirmed' copy for an award row with unreported fees, stops, confidence, and duration - never a fabricated real-looking value", async () => {
+    await renderResultsWithOptions([
+      heroOption,
+      aeroplanOption,
+      unreportedFieldsAwardOption,
+    ]);
+
+    const row = screen
+      .getByText("Turkish Miles&Smiles")
+      .closest("article") as HTMLElement;
+
+    expect(within(row).getByText(/Stops not confirmed/)).toBeInTheDocument();
+    expect(within(row).getByText(/unreported confidence/)).toBeInTheDocument();
+    expect(within(row).getByText(/Not reported/)).toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole("button", { name: /show details/i }));
+
+    expect(within(row).getByText("Duration not reported")).toBeInTheDocument();
+  });
+
+  it("never shows a hardcoded 'Nonstop' claim for an award option whose stops were never confirmed", async () => {
+    await renderResultsWithOptions([
+      heroOption,
+      aeroplanOption,
+      unreportedFieldsAwardOption,
+    ]);
+
+    const row = screen
+      .getByText("Turkish Miles&Smiles")
+      .closest("article") as HTMLElement;
+
+    expect(within(row).queryByText(/Nonstop/)).not.toBeInTheDocument();
+  });
+
+  it("shows honest 'not reported'/'not confirmed' copy on the cash benchmark card, and removes the old blanket 'Fees: Included' claim", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption], {
+      data: [unreportedFieldsCashOption],
+      isLive: true,
+      providerLabel: "Travelpayouts",
+    });
+
+    expect(screen.getAllByText(/Stops not confirmed/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Duration not reported")).toBeInTheDocument();
+    expect(screen.getByText("Taxes/fees")).toBeInTheDocument();
+    expect(screen.queryByText("Included")).not.toBeInTheDocument();
+  });
+
+  it("labels an unconfirmed cash cabin as the searched cabin rather than implying it was confirmed", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption], {
+      data: [unreportedFieldsCashOption],
+      isLive: true,
+      providerLabel: "Travelpayouts",
+    });
+
+    expect(screen.getByText(/Searched: Business/)).toBeInTheDocument();
   });
 });

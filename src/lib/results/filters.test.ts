@@ -93,6 +93,19 @@ describe("results filters", () => {
     ).toEqual(["one-stop"]);
   });
 
+  it("removes options with unconfirmed stop count under max one stop, rather than treating unknown as nonstop", () => {
+    const options = [
+      createOption("one-stop"),
+      createOption("unconfirmed-stops", { stops: undefined }),
+    ];
+
+    expect(
+      applyResultsFilters(options, { ...noFilters, maxOneStop: true }).map(
+        (option) => option.id,
+      ),
+    ).toEqual(["one-stop"]);
+  });
+
   it("removes awards with fees above the MVP threshold", () => {
     const options = [
       createOption("reasonable-fees", {
@@ -101,6 +114,20 @@ describe("results filters", () => {
       createOption("high-fees", {
         taxesAndFeesUsd: HIGH_FEE_AWARD_THRESHOLD_USD + 1,
       }),
+    ];
+
+    expect(
+      applyResultsFilters(options, {
+        ...noFilters,
+        hideHighFeeAwards: true,
+      }).map((option) => option.id),
+    ).toEqual(["reasonable-fees"]);
+  });
+
+  it("removes options with unreported fees under hide-high-fee-awards, rather than treating unknown as $0", () => {
+    const options = [
+      createOption("reasonable-fees"),
+      createOption("unreported-fees", { taxesAndFeesUsd: undefined }),
     ];
 
     expect(

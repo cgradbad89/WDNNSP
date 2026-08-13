@@ -23,4 +23,8 @@ describe("calculateCentsPerPoint", () => {
     expect(calculateCentsPerPoint(100, 100, 10000)).toBe(0);
     expect(calculateCentsPerPoint(100, 120, 10000)).toBe(0);
   });
+
+  it("returns undefined when taxes and fees are unreported, rather than assuming $0", () => {
+    expect(calculateCentsPerPoint(7100, undefined, 120000)).toBeUndefined();
+  });
 });

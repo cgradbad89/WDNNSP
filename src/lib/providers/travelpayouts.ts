@@ -141,15 +141,16 @@ function mapEntryToCashFlightOption({
     origin,
     destination: destinationIata,
     // NOTE: the Travelpayouts cheap-prices endpoint does not return arrival
-    // time, duration, stop count, or cabin. These fields are required by the
-    // shared CashFlightOption shape, so they are populated with explicit
-    // placeholders (0-duration, same-as-departure arrival, requested cabin)
-    // and flagged via `limitations` below rather than guessed as real data.
+    // time, duration, stop count, or cabin. These are left undefined (not
+    // guessed as 0-duration/same-as-departure/etc.) so scoring and the UI
+    // treat them as genuinely unknown rather than the best-case real value.
+    // `cabin` still gets a value because it's a required field on the shared
+    // shape, but it's only the cabin the user searched for, echoed back -
+    // `cabinConfirmed: false` marks it as not a confirmed fare attribute.
+    // See `limitations` below for the human-readable explanation.
     departureDateTime: entry.departure_at,
-    arrivalDateTime: entry.departure_at,
-    durationMinutes: 0,
-    stops: 0,
     cabin: search.cabin,
+    cabinConfirmed: false,
     cashPriceUsd: entry.price,
     price: {
       amount: entry.price,
@@ -166,7 +167,7 @@ function mapEntryToCashFlightOption({
         code: "travelpayouts_partial_itinerary",
         severity: "warning",
         message:
-          "Travelpayouts cached price data does not confirm arrival time, duration, stop count, or cabin. These fields are estimates only.",
+          "Travelpayouts cached price data does not confirm arrival time, duration, stop count, or cabin. These fields are shown as not reported rather than guessed.",
       },
     ],
   };

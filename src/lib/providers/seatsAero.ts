@@ -284,9 +284,17 @@ function mapResultCabinToAwardOption({
     arrivalDateTime: departureDateTime,
     cabin: CABIN_BY_SEATS_AERO_KEY[cabinKey],
     pointsRequired: Math.round(mileageCost * passengers),
-    // Seats.aero Cached Search does not return taxes/fees. Placeholder $0,
-    // flagged via `limitations` below rather than guessed.
-    taxesAndFeesUsd: 0,
+    // Seats.aero Cached Search does not return taxes/fees. Left undefined
+    // (not a fabricated $0) so scoring and the UI treat this as unknown
+    // rather than the best-case "no fees" outcome. Flagged via
+    // `limitations` below.
+    ...(isDirect ? { stops: 0 } : {}),
+    // `YDirect`/etc. only confirms whether a nonstop option exists in this
+    // cabin - it does NOT confirm the stop count when it's false, so `stops`
+    // is left undefined (not a fabricated 0) whenever nonstop isn't
+    // confirmed, matching this repo's "unreported means undefined"
+    // convention (see src/lib/providers/travelpayouts.ts). Flagged via
+    // `limitations` when unconfirmed.
     // Seats.aero reports the mileage program via `Source` (e.g. "aeroplan"),
     // mapped through SEATS_AERO_SOURCE_MAP to the card-transferable program
     // name and looked up against data/transferPartners.ts. Resolves to []
@@ -295,13 +303,10 @@ function mapResultCabinToAwardOption({
     transferSources: getTransferSourcesForSeatsAeroSource(result.Source),
     sourceProgramId: airlineProgram,
     sourceProgramLabel: airlineProgram,
-    // `YDirect`/etc. only confirms whether a nonstop option exists in this
-    // cabin, not the actual stop count when it doesn't. 0 is used as an
-    // explicit placeholder either way and flagged via `limitations` when
-    // unconfirmed, matching this repo's existing placeholder convention
-    // (see src/lib/providers/travelpayouts.ts).
-    stops: 0,
-    confidence: "medium",
+    // Cached Search has no confidence/quality signal of its own. A uniform
+    // hardcoded "medium" for every result would be exactly the kind of
+    // fabricated plausible-looking default this field must avoid, so
+    // confidence is left undefined (genuinely unknown) rather than guessed.
     availabilityStatus: "available",
     ...(typeof remainingSeats === "number" ? { availableSeats: remainingSeats } : {}),
     limitations: isDirect

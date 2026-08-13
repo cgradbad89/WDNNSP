@@ -105,6 +105,17 @@ describe("sortAwardOptions", () => {
     ).toEqual(["route-detail-duration", "fallback-duration"]);
   });
 
+  it("lowest_fees sorts options with unreported taxesAndFeesUsd to the end, not first as if $0", () => {
+    const withUnknownFees = [
+      createOption("known", { taxesAndFeesUsd: 200 }),
+      createOption("unknown", { taxesAndFeesUsd: undefined }),
+    ];
+
+    expect(
+      sortAwardOptions(withUnknownFees, "lowest_fees").map((o) => o.id),
+    ).toEqual(["known", "unknown"]);
+  });
+
   it("fastest sorts options with unknown duration to the end", () => {
     const withUnknownDuration = [
       createOption("known", { durationMinutes: 400 }),

@@ -223,6 +223,57 @@ describe("searchTravelpayoutsCashFlights", () => {
     expect(second.cashPriceUsd).toBe(950);
   });
 
+  it("leaves arrivalDateTime, durationMinutes, and stops undefined rather than fabricating placeholder values", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          HND: {
+            "0": {
+              price: 812,
+              airline: "NH",
+              flight_number: 6,
+              departure_at: "2027-05-01T10:00:00Z",
+              expires_at: "2026-06-13T00:00:00Z",
+            },
+          },
+        },
+      }),
+    );
+
+    const envelope = await searchTravelpayoutsCashFlights(search);
+    const [first] = envelope.data;
+
+    expect(first.arrivalDateTime).toBeUndefined();
+    expect(first.durationMinutes).toBeUndefined();
+    expect(first.stops).toBeUndefined();
+  });
+
+  it("marks cabin as unconfirmed - it is only the searched cabin echoed back, not a provider-confirmed fare attribute", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          HND: {
+            "0": {
+              price: 812,
+              airline: "NH",
+              flight_number: 6,
+              departure_at: "2027-05-01T10:00:00Z",
+              expires_at: "2026-06-13T00:00:00Z",
+            },
+          },
+        },
+      }),
+    );
+
+    const envelope = await searchTravelpayoutsCashFlights(search);
+    const [first] = envelope.data;
+
+    expect(first.cabin).toBe(search.cabin);
+    expect(first.cabinConfirmed).toBe(false);
+  });
+
   it("marks a successful response with usable data as stale, not success", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({

@@ -1,8 +1,17 @@
 export function calculateCentsPerPoint(
   cashPriceUsd: number,
-  taxesAndFeesUsd: number,
+  taxesAndFeesUsd: number | undefined,
   pointsRequired: number,
-): number {
+): number | undefined {
+  // Unreported fees are unknown, not zero. Computing cpp as if fees were $0
+  // would inflate the redemption's apparent value (subtracting less from
+  // cashPriceUsd) - the exact fabricated-best-case bug this guards against.
+  // Callers must treat an undefined result as unknown/worst-case, not skip
+  // straight to a default number.
+  if (taxesAndFeesUsd === undefined) {
+    return undefined;
+  }
+
   if (
     !Number.isFinite(cashPriceUsd) ||
     !Number.isFinite(taxesAndFeesUsd) ||

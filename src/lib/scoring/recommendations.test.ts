@@ -424,5 +424,138 @@ describe("scoreAwardOptions", () => {
     expect(result.rankedAwardOptions[0].recommendationLabel).toBe("not_enough_points");
     expect(result.rankedAwardOptions[0].score.transferSimplicityScore).toBe(0);
   });
+
+  describe("unreported fields are treated as unknown, not the best case", () => {
+    // This is the core regression test for the fabricated-defaults bug: an
+    // option whose fees/stops/confidence were never reported by the
+    // provider (undefined) must not out-score an otherwise-identical option
+    // that honestly reported worse-but-real numbers for those same fields.
+    it("does not let unreported fees/stops/confidence out-score honestly-reported, less-flattering real values", () => {
+      const result = scoreAwardOptions(
+        [
+          createAwardOption({
+            id: "unreported",
+            taxesAndFeesUsd: undefined,
+            stops: undefined,
+            confidence: undefined,
+          }),
+          createAwardOption({
+            id: "honestly-reported-worse",
+            // Real, worse-than-great numbers - but still genuinely reported.
+            taxesAndFeesUsd: 450,
+            stops: 2,
+            confidence: "low",
+          }),
+        ],
+        cashOption,
+        accounts,
+        transferPartners,
+      );
+
+      const unreported = getOptionById(result.rankedAwardOptions, "unreported");
+      const honest = getOptionById(
+        result.rankedAwardOptions,
+        "honestly-reported-worse",
+      );
+
+      expect(unreported.score.totalScore).toBeLessThanOrEqual(
+        honest.score.totalScore,
+      );
+      // Confirm this isn't a coincidental tie: the unreported option must
+      // score strictly worse on every affected component.
+      expect(unreported.score.valueScore).toBeLessThanOrEqual(
+        honest.score.valueScore,
+      );
+      expect(unreported.score.convenienceScore).toBeLessThan(
+        honest.score.convenienceScore,
+      );
+      expect(unreported.score.availabilityConfidenceScore).toBeLessThan(
+        honest.score.availabilityConfidenceScore,
+      );
+    });
+
+    it("leaves centsPerPoint undefined (not a fabricated number) when taxesAndFeesUsd is unreported", () => {
+      const result = scoreAwardOptions(
+        [createAwardOption({ id: "unreported-fees", taxesAndFeesUsd: undefined })],
+        cashOption,
+        accounts,
+        transferPartners,
+      );
+
+      expect(result.rankedAwardOptions[0].centsPerPoint).toBeUndefined();
+    });
+
+    it("does not generate 'Taxes and fees are low' explanation copy when taxesAndFeesUsd is unreported", () => {
+      const result = scoreAwardOptions(
+        [createAwardOption({ id: "unreported-fees", taxesAndFeesUsd: undefined })],
+        cashOption,
+        accounts,
+        transferPartners,
+      );
+
+      expect(result.rankedAwardOptions[0].score.explanation).not.toContain(
+        "Taxes and fees are low for this award option.",
+      );
+    });
+
+    it("adds a warning when taxes and fees are unreported", () => {
+      const result = scoreAwardOptions(
+        [createAwardOption({ id: "unreported-fees", taxesAndFeesUsd: undefined })],
+        cashOption,
+        accounts,
+        transferPartners,
+      );
+
+      expect(result.rankedAwardOptions[0].score.warnings).toContain(
+        "Taxes and fees are not reported for this option and are not included in its value score.",
+      );
+    });
+
+    it("adds a warning when confidence is unreported", () => {
+      const result = scoreAwardOptions(
+        [createAwardOption({ id: "unreported-confidence", confidence: undefined })],
+        cashOption,
+        accounts,
+        transferPartners,
+      );
+
+      expect(result.rankedAwardOptions[0].score.warnings).toContain(
+        "Availability confidence is not reported for this option, so verify it directly before making plans.",
+      );
+    });
+
+    it("never assigns the 'Lowest Fees' label to an option with unreported taxesAndFeesUsd", () => {
+      const result = scoreAwardOptions(
+        [
+          createAwardOption({
+            id: "aeroplan",
+            pointsRequired: 120000,
+            taxesAndFeesUsd: 186,
+          }),
+          createAwardOption({
+            id: "unreported-fees",
+            airlineProgram: "Virgin Atlantic Flying Club",
+            pointsRequired: 110000,
+            taxesAndFeesUsd: undefined,
+            confidence: "medium",
+          }),
+          createAwardOption({
+            id: "united",
+            airlineProgram: "United MileagePlus",
+            pointsRequired: 170000,
+            taxesAndFeesUsd: 48,
+          }),
+        ],
+        cashOption,
+        accounts,
+        transferPartners,
+      );
+
+      expect(
+        getOptionById(result.rankedAwardOptions, "unreported-fees")
+          .recommendationLabel,
+      ).not.toBe("lowest_fees");
+    });
+  });
 });
 
