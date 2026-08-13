@@ -32,11 +32,14 @@ export function ResultsHeader({
     : hasAnyResults
       ? `Available results for ${selectedSearchName}`
       : `No provider results for ${selectedSearchName}`;
-  const description = bestAwardOption
-    ? "Mock cash and award data are compared for the active search, then ranked with the weighted recommendation engine."
-    : hasAnyResults
-      ? "Provider data is incomplete for this search, so WDNNSP is showing the usable sections without inventing a recommendation."
-      : "The current providers did not return usable cash or award results for this search.";
+  const description =
+    bestAwardOption && cashOption
+      ? "Cash and award provider data are compared for the active search, then ranked with the weighted recommendation engine."
+      : bestAwardOption
+        ? "Award options are ranked for the active search, but the cash provider did not return a benchmark for cash-backed cents-per-point."
+        : cashOption
+          ? "A cash benchmark is available for this search, but no award recommendation is available from the current provider data."
+          : "The current providers did not return usable cash or award results for this search.";
 
   return (
     <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 shadow-[0_18px_50px_rgba(31,63,45,0.08)] md:p-6">
