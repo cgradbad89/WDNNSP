@@ -8,6 +8,9 @@ export interface ResultsFilters {
   maxOneStop: boolean;
   hideHighFeeAwards: boolean;
   businessCabinOnly: boolean;
+  /** Hides options whose AwardFlightOption.source is "mock" rather than a
+   * real provider response (e.g. "seats_aero"). Off by default. */
+  liveOnly: boolean;
 }
 
 export function applyResultsFilters(
@@ -41,6 +44,10 @@ export function applyResultsFilters(
     }
 
     if (filters.businessCabinOnly && option.cabin !== "business") {
+      return false;
+    }
+
+    if (filters.liveOnly && option.source === "mock") {
       return false;
     }
 

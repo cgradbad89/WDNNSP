@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyResultsFilters,
   HIGH_FEE_AWARD_THRESHOLD_USD,
+  type ResultsFilters,
 } from "@/lib/results/filters";
 import type { ScoredAwardOption } from "@/lib/scoring/recommendations";
 import type { RecommendationScore } from "@/types/scoring";
@@ -16,6 +17,15 @@ const score: RecommendationScore = {
   totalScore: 88,
   explanation: [],
   warnings: [],
+};
+
+const noFilters: ResultsFilters = {
+  bookableWithAnyPoints: false,
+  bookableWithTransferablePoints: false,
+  maxOneStop: false,
+  hideHighFeeAwards: false,
+  businessCabinOnly: false,
+  liveOnly: false,
 };
 
 function createOption(
@@ -53,11 +63,8 @@ describe("results filters", () => {
 
     expect(
       applyResultsFilters(options, {
+        ...noFilters,
         bookableWithAnyPoints: true,
-        bookableWithTransferablePoints: false,
-        maxOneStop: false,
-        hideHighFeeAwards: false,
-        businessCabinOnly: false,
       }).map((option) => option.id),
     ).toEqual(["bookable"]);
   });
@@ -70,11 +77,8 @@ describe("results filters", () => {
 
     expect(
       applyResultsFilters(options, {
-        bookableWithAnyPoints: false,
+        ...noFilters,
         bookableWithTransferablePoints: true,
-        maxOneStop: false,
-        hideHighFeeAwards: false,
-        businessCabinOnly: false,
       }).map((option) => option.id),
     ).toEqual(["transferable"]);
   });
@@ -83,13 +87,9 @@ describe("results filters", () => {
     const options = [createOption("one-stop"), createOption("two-stop", { stops: 2 })];
 
     expect(
-      applyResultsFilters(options, {
-        bookableWithAnyPoints: false,
-        bookableWithTransferablePoints: false,
-        maxOneStop: true,
-        hideHighFeeAwards: false,
-        businessCabinOnly: false,
-      }).map((option) => option.id),
+      applyResultsFilters(options, { ...noFilters, maxOneStop: true }).map(
+        (option) => option.id,
+      ),
     ).toEqual(["one-stop"]);
   });
 
@@ -105,11 +105,8 @@ describe("results filters", () => {
 
     expect(
       applyResultsFilters(options, {
-        bookableWithAnyPoints: false,
-        bookableWithTransferablePoints: false,
-        maxOneStop: false,
+        ...noFilters,
         hideHighFeeAwards: true,
-        businessCabinOnly: false,
       }).map((option) => option.id),
     ).toEqual(["reasonable-fees"]);
   });
@@ -122,12 +119,60 @@ describe("results filters", () => {
 
     expect(
       applyResultsFilters(options, {
-        bookableWithAnyPoints: false,
-        bookableWithTransferablePoints: false,
-        maxOneStop: false,
-        hideHighFeeAwards: false,
+        ...noFilters,
         businessCabinOnly: true,
       }).map((option) => option.id),
     ).toEqual(["business"]);
+  });
+
+  describe("liveOnly", () => {
+    it("does nothing when off (the default)", () => {
+      const options = [
+        createOption("live", { source: "seats_aero" }),
+        createOption("mock", { source: "mock" }),
+      ];
+
+      expect(
+        applyResultsFilters(options, noFilters).map((option) => option.id),
+      ).toEqual(["live", "mock"]);
+    });
+
+    it("hides mock-sourced options when on", () => {
+      const options = [
+        createOption("live", { source: "seats_aero" }),
+        createOption("mock", { source: "mock" }),
+      ];
+
+      expect(
+        applyResultsFilters(options, { ...noFilters, liveOnly: true }).map(
+          (option) => option.id,
+        ),
+      ).toEqual(["live"]);
+    });
+
+    it("keeps non-mock sources such as manual or other", () => {
+      const options = [
+        createOption("manual", { source: "manual" }),
+        createOption("other", { source: "other" }),
+        createOption("mock", { source: "mock" }),
+      ];
+
+      expect(
+        applyResultsFilters(options, { ...noFilters, liveOnly: true }).map(
+          (option) => option.id,
+        ),
+      ).toEqual(["manual", "other"]);
+    });
+
+    it("returns an empty list, not an error, when every result is mock", () => {
+      const options = [
+        createOption("mock-1", { source: "mock" }),
+        createOption("mock-2", { source: "mock" }),
+      ];
+
+      expect(
+        applyResultsFilters(options, { ...noFilters, liveOnly: true }),
+      ).toEqual([]);
+    });
   });
 });

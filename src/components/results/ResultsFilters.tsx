@@ -12,6 +12,52 @@ const scoringWeights = [
   { label: "Transfer simplicity", value: "10%" },
 ];
 
+interface FilterOption {
+  key: keyof ResultsFiltersState;
+  label: string;
+}
+
+interface FilterGroup {
+  title: string;
+  options: FilterOption[];
+}
+
+// Grouped per the approved mockup (Sort & show / Stops / Cabin / Fees /
+// Data source). This is the same five pre-existing filters plus one new
+// one (liveOnly) - filter *logic* lives in src/lib/results/filters.ts and
+// is unchanged here; this is purely how the toggles are grouped/labeled.
+const filterGroups: FilterGroup[] = [
+  {
+    title: "Sort & show",
+    options: [
+      {
+        key: "bookableWithAnyPoints",
+        label: "Show only options bookable with my points",
+      },
+      {
+        key: "bookableWithTransferablePoints",
+        label: "Show only options bookable with my transferable points",
+      },
+    ],
+  },
+  {
+    title: "Stops",
+    options: [{ key: "maxOneStop", label: "Max one stop" }],
+  },
+  {
+    title: "Cabin",
+    options: [{ key: "businessCabinOnly", label: "Business cabin only" }],
+  },
+  {
+    title: "Fees",
+    options: [{ key: "hideHighFeeAwards", label: "Hide high-fee awards" }],
+  },
+  {
+    title: "Data source",
+    options: [{ key: "liveOnly", label: "Live only (hide mock)" }],
+  },
+];
+
 interface ResultsFiltersProps {
   filters: ResultsFiltersState;
   onChangeFilter: (filter: keyof ResultsFiltersState, value: boolean) => void;
@@ -21,45 +67,40 @@ export function ResultsFilters({
   filters,
   onChangeFilter,
 }: ResultsFiltersProps): JSX.Element {
-  const filterOptions: Array<{
-    key: keyof ResultsFiltersState;
-    label: string;
-  }> = [
-    {
-      key: "bookableWithAnyPoints",
-      label: "Show only options bookable with my points",
-    },
-    {
-      key: "bookableWithTransferablePoints",
-      label: "Show only options bookable with my transferable points",
-    },
-    { key: "maxOneStop", label: "Max one stop" },
-    { key: "hideHighFeeAwards", label: "Hide high-fee awards" },
-    { key: "businessCabinOnly", label: "Business cabin only" },
-  ];
-
   return (
     <aside className="space-y-4">
       <section className="rounded-lg border border-[#d9e2d6] bg-white p-5">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f6b4f]">
           Filters
         </p>
-        <div className="mt-4 space-y-3">
-          {filterOptions.map((filterOption) => (
-            <label
-              className="flex items-start gap-3 text-sm font-medium leading-6 text-[#405147]"
-              key={filterOption.key}
+        <div className="mt-4 space-y-4">
+          {filterGroups.map((group) => (
+            <div
+              className="border-b border-[#edf3ea] pb-4 last:border-b-0 last:pb-0"
+              key={group.title}
             >
-              <input
-                checked={filters[filterOption.key]}
-                className="mt-1 h-4 w-4 accent-[#2f6b4f]"
-                onChange={(event) =>
-                  onChangeFilter(filterOption.key, event.target.checked)
-                }
-                type="checkbox"
-              />
-              {filterOption.label}
-            </label>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#637268]">
+                {group.title}
+              </p>
+              <div className="mt-3 space-y-3">
+                {group.options.map((filterOption) => (
+                  <label
+                    className="flex items-start gap-3 text-sm font-medium leading-6 text-[#405147]"
+                    key={filterOption.key}
+                  >
+                    <input
+                      checked={filters[filterOption.key]}
+                      className="mt-1 h-4 w-4 accent-[#2f6b4f]"
+                      onChange={(event) =>
+                        onChangeFilter(filterOption.key, event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                    {filterOption.label}
+                  </label>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </section>

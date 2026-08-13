@@ -507,6 +507,39 @@ Results provider UX states:
   missing. Live Amadeus, Duffel, and Seats.aero Live Search/Bulk Availability
   remain deferred.
 
+Results page layout, as of the August 12, 2026 results-page redesign session:
+
+- The active search collapses into a single editable pill in a sticky top
+  bar (`SearchSummaryStrip`, `sticky top-3`); clicking it opens the same
+  edit-search drawer as before (`ResultsPageClient.handleOpenEdit`) - no new
+  edit logic was added.
+- The five original filter toggles (bookable with any points, bookable with
+  transferable points, max one stop, hide high-fee awards, business cabin
+  only) moved from a right-hand panel into a left filter rail
+  (`ResultsFilters`), grouped as Sort & show / Stops / Cabin / Fees / Data
+  source. Filter *logic* is unchanged (`src/lib/results/filters.ts`).
+- A new "Live only (hide mock)" filter (`ResultsFilters.liveOnly`, default
+  off) hides award options whose `AwardFlightOption.source === "mock"`.
+  Non-mock sources (`seats_aero`, `manual`, `other`) are treated as "live"
+  for this filter.
+- A sort control (`ResultsSortSelect`, `src/lib/results/sorting.ts`) reorders
+  the displayed award options by Best match (default, the existing
+  score-ranked order - unchanged), Fewest points, Lowest taxes/fees, or
+  Fastest (`routeDetail.totalDurationMinutes`, falling back to
+  `durationMinutes`). Sorting only reorders the already-scored, already-
+  labeled list for display; it never recomputes `score` or
+  `recommendationLabel`, which stay tied to the canonical best-match order
+  from `scoreAwardOptions`.
+- The "Best Overall" option renders as a larger hero card
+  (`BestRecommendationCard`) and is excluded from the compact rows below it
+  (`RankedAwardOptions`) to avoid showing the same option twice. Compact
+  rows show program name, route summary, badges (recommendation label,
+  confidence, transfer-required), score, and points+taxes by default, with
+  an expand toggle that reveals the same transfer-path details,
+  explanations, and warnings previously always shown - no information was
+  removed, only progressively disclosed. "View route details" remains a
+  separate, always-visible action per row.
+
 ---
 
 #### 5.10 Saved Searches
@@ -1411,6 +1444,26 @@ Current implementation status as of June 12, 2026:
 - Remaining: scoring tuning with real-world examples, cash-versus-award
   recommendation thresholds, provider freshness weighting, mixed-cabin scoring,
   and live search execution.
+
+Current implementation status as of August 12, 2026 (results-page redesign):
+
+- Completed: sticky editable-pill top bar reusing the existing edit-search
+  drawer, left filter rail (same filter logic, regrouped), a new client-side
+  "Live only (hide mock)" filter, a client-side sort control (best match /
+  fewest points / lowest taxes-fees / fastest) that reorders display only
+  and never touches `score`/`recommendationLabel`, a restyled hero card for
+  the Best Overall option, and compact expandable rows for the remaining
+  ranked options that preserve every previously-shown badge, warning, and
+  detail behind a "Show details" toggle. See section 5.9 for detail.
+- Covered by unit tests: `sortAwardOptions` for all four sort options
+  including a duration-fallback and unknown-duration-sorts-last case, the
+  `liveOnly` filter (on/off, mixed sources, and an all-mock-results edge
+  case that must resolve to an empty list rather than an error), and
+  component-level tests for the sticky pill's edit-search trigger, hero/row
+  deduplication, filter-driven row visibility, sort-driven row ordering, and
+  badge rendering.
+- Remaining: none identified for this session's scope; underlying scoring
+  and live-provider items remain as listed above.
 
 ---
 

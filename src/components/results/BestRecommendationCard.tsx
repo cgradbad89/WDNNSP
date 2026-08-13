@@ -149,24 +149,24 @@ export function BestRecommendationCard({
   }
 
   return (
-    <article className="rounded-lg border border-[#d9e2d6] bg-[#0f2f22] p-5 text-white shadow-[0_18px_50px_rgba(15,47,34,0.18)] md:p-6">
+    <article className="rounded-xl border-2 border-[#a8d5bd] bg-[#0f2f22] p-6 text-white shadow-[0_24px_60px_rgba(15,47,34,0.24)] md:p-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#a8d5bd]">
+          <p className="inline-flex items-center gap-2 rounded-full bg-[#a8d5bd]/15 px-3 py-1 text-sm font-semibold uppercase tracking-[0.16em] text-[#a8d5bd]">
             {formatRecommendationLabel(bestAwardOption.recommendationLabel)}
           </p>
-          <h3 className="mt-3 max-w-2xl text-2xl font-semibold tracking-tight">
+          <h3 className="mt-4 max-w-2xl text-3xl font-semibold tracking-tight">
             {formatRecommendationAction(bestAwardOption)}
           </h3>
-          <p className="mt-2 text-sm leading-6 text-[#cfe6d8]">
+          <p className="mt-2 text-base leading-6 text-[#cfe6d8]">
             {getRouteSummary(bestAwardOption)} -{" "}
             {cabinLabels[bestAwardOption.cabin]}
           </p>
         </div>
-        <PlaneIcon className="h-10 w-10 shrink-0 text-[#a8d5bd]" />
+        <PlaneIcon className="h-12 w-12 shrink-0 text-[#a8d5bd]" />
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard
           label="Score"
           value={String(bestAwardOption.score.totalScore)}

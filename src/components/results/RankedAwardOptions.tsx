@@ -1,6 +1,7 @@
 "use client";
 
 import type { JSX } from "react";
+import { useState } from "react";
 import { CentsPerPointHelp } from "@/components/results/CentsPerPointHelp";
 import { NoProviderResultsState } from "@/components/results/NoProviderResultsState";
 import { ResultsEmptyState } from "@/components/results/ResultsEmptyState";
@@ -99,149 +100,204 @@ function getRouteSummary(option: {
   return `${option.origin} -> ${option.destination}`;
 }
 
-interface AwardOptionCardProps {
+function ChevronIcon({
+  className,
+  isExpanded,
+}: {
+  className?: string;
+  isExpanded: boolean;
+}): JSX.Element {
+  return (
+    <svg
+      aria-hidden="true"
+      className={`${className ?? ""} transition-transform ${
+        isExpanded ? "rotate-180" : ""
+      }`}
+      fill="none"
+      viewBox="0 0 16 16"
+    >
+      <path
+        d="m4 6 4 4 4-4"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
+interface AwardOptionRowProps {
   directBalance: number;
   onViewRoute: (trigger: HTMLElement) => void;
   option: ScoredAwardOption;
   transferPaths: TransferPathDisplay[];
 }
 
-function AwardOptionCard({
+// Compact, single-line-ish row: badges + program/route summary + score +
+// points/taxes are always visible. Everything that was previously always
+// shown (direct balance, transfer path details, explanation/warning text)
+// is still shown, just behind the expand affordance instead of always-on -
+// a display/progressive-disclosure change only, not a data reduction.
+// "View route details" stays an explicit, always-visible button so that
+// existing detail-view interaction isn't hidden behind the expand toggle.
+function AwardOptionRow({
   directBalance,
   onViewRoute,
   option,
   transferPaths,
-}: AwardOptionCardProps): JSX.Element {
+}: AwardOptionRowProps): JSX.Element {
+  const [isExpanded, setIsExpanded] = useState(false);
   const isTransferRequired =
     directBalance < option.pointsRequired && transferPaths.length > 0;
+  const extraContentId = `award-option-details-${option.id}`;
+  const hasExtraContext =
+    isTransferRequired ||
+    option.score.explanation.length > 0 ||
+    option.score.warnings.length > 0;
 
   return (
-    <article className="rounded-lg border border-[#d9e2d6] bg-white p-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+    <article className="rounded-lg border border-[#d9e2d6] bg-white p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className={`rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] ${getLabelTone(
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.1em] ${getLabelTone(
                 option.recommendationLabel,
               )}`}
             >
               {formatRecommendationLabel(option.recommendationLabel)}
             </span>
-            <span className="rounded-md bg-[#f7faf6] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
+            <span className="rounded-md bg-[#f7faf6] px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.1em] text-[#637268]">
               {option.confidence} confidence
             </span>
             {isTransferRequired ? (
-              <span className="rounded-md bg-[#fff9df] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-[#5d4c1d]">
+              <span className="rounded-md bg-[#fff9df] px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.1em] text-[#5d4c1d]">
                 Transfer required
               </span>
             ) : null}
           </div>
-          <h3 className="mt-3 text-xl font-semibold tracking-tight text-[#14211b]">
+          <h4 className="mt-2 truncate text-base font-semibold tracking-tight text-[#14211b]">
             {option.airlineProgram}
-          </h3>
-          <p className="mt-2 text-sm leading-6 text-[#637268]">
+          </h4>
+          <p className="truncate text-sm text-[#637268]">
             {getRouteSummary(option)} - {cabinLabels[option.cabin]} -{" "}
-            {formatStops(option.stops)} -{" "}
-            {formatDuration(
-              option.routeDetail?.totalDurationMinutes ??
-                option.durationMinutes ??
-                0,
-            )}
+            {formatStops(option.stops)}
           </p>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center gap-4 lg:gap-6">
+          <div className="text-left">
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[#637268]">
+              Score
+            </p>
+            <p className="text-lg font-semibold text-[#14211b]">
+              {option.score.totalScore}
+            </p>
+          </div>
+          <div className="text-left">
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[#637268]">
+              Points + taxes
+            </p>
+            <p className="text-sm font-semibold text-[#14211b]">
+              {formatNumber(option.pointsRequired)} +{" "}
+              {formatCurrency(option.taxesAndFeesUsd)}
+            </p>
+          </div>
+          <button
+            className="w-fit shrink-0 rounded-md border border-[#b8c8b2] px-3 py-2 text-xs font-semibold text-[#24382d] transition hover:bg-[#edf3ea]"
+            onClick={(event) => onViewRoute(event.currentTarget)}
+            type="button"
+          >
+            View route details
+          </button>
+          <button
+            aria-controls={extraContentId}
+            aria-expanded={isExpanded}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#b8c8b2] text-[#405147] transition hover:bg-[#edf3ea]"
+            onClick={() => setIsExpanded((current) => !current)}
+            type="button"
+          >
+            <ChevronIcon className="h-4 w-4" isExpanded={isExpanded} />
+            <span className="sr-only">
+              {isExpanded ? "Hide details" : "Show details"}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {isExpanded ? (
+        <div className="mt-4 space-y-3 border-t border-[#edf3ea] pt-4" id={extraContentId}>
           {option.routeDetail?.layovers[0] ? (
-            <p className="mt-1 text-sm font-medium text-[#405147]">
+            <p className="text-sm font-medium text-[#405147]">
               Stop: {option.routeDetail.layovers[0].airport} for{" "}
               {formatDuration(option.routeDetail.layovers[0].durationMinutes)}
             </p>
           ) : null}
-        </div>
-        <div className="text-left lg:text-right">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#637268]">
-            Score
-          </p>
-          <p className="mt-1 text-3xl font-semibold text-[#14211b]">
-            {option.score.totalScore}
-          </p>
-        </div>
-      </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
-            Points required
-          </p>
-          <p className="mt-2 text-lg font-semibold text-[#14211b]">
-            {formatNumber(option.pointsRequired)}
-          </p>
-        </div>
-        <div className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
-            Taxes/fees
-          </p>
-          <p className="mt-2 text-lg font-semibold text-[#14211b]">
-            {formatCurrency(option.taxesAndFeesUsd)}
-          </p>
-        </div>
-        <div className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
-            Stops
-          </p>
-          <p className="mt-2 text-lg font-semibold text-[#14211b]">
-            {formatStops(option.stops)}
-          </p>
-        </div>
-        <div className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
-            <CentsPerPointHelp />
-          </p>
-          <p className="mt-2 text-lg font-semibold text-[#14211b]">
-            {option.centsPerPoint?.toFixed(1) ?? "0.0"}
-          </p>
-        </div>
-        <div className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
-            Direct balance
-          </p>
-          <p className="mt-2 text-lg font-semibold text-[#14211b]">
-            {formatNumber(directBalance)}
-          </p>
-        </div>
-      </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
+                Duration
+              </p>
+              <p className="mt-2 text-lg font-semibold text-[#14211b]">
+                {formatDuration(
+                  option.routeDetail?.totalDurationMinutes ??
+                    option.durationMinutes ??
+                    0,
+                )}
+              </p>
+            </div>
+            <div className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
+                <CentsPerPointHelp />
+              </p>
+              <p className="mt-2 text-lg font-semibold text-[#14211b]">
+                {option.centsPerPoint?.toFixed(1) ?? "0.0"}
+              </p>
+            </div>
+            <div className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
+                Direct balance
+              </p>
+              <p className="mt-2 text-lg font-semibold text-[#14211b]">
+                {formatNumber(directBalance)}
+              </p>
+            </div>
+          </div>
 
-      <TransferPathDetails
-        isTransferRequired={isTransferRequired}
-        paths={transferPaths}
-      />
+          <TransferPathDetails
+            isTransferRequired={isTransferRequired}
+            paths={transferPaths}
+          />
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <button
-          className="w-fit rounded-md border border-[#b8c8b2] px-4 py-2.5 text-sm font-semibold text-[#24382d] transition hover:bg-[#edf3ea]"
-          onClick={(event) => onViewRoute(event.currentTarget)}
-          type="button"
-        >
-          View route details
-        </button>
-      </div>
-
-      {[...option.score.explanation, ...option.score.warnings].length > 0 ? (
-        <div className="mt-4 grid gap-2 text-sm leading-6 text-[#526158] md:grid-cols-2">
-          {option.score.explanation.map((explanation) => (
-            <p
-              className="rounded-md bg-[#edf3ea] px-3 py-2 text-[#2f6b4f]"
-              key={explanation}
-            >
-              {explanation}
-            </p>
-          ))}
-          {option.score.warnings.map((warning) => (
-            <p
-              className="rounded-md bg-[#fff9df] px-3 py-2 text-[#5d4c1d]"
-              key={warning}
-            >
-              {warning}
-            </p>
-          ))}
+          {[...option.score.explanation, ...option.score.warnings].length >
+          0 ? (
+            <div className="grid gap-2 text-sm leading-6 text-[#526158] md:grid-cols-2">
+              {option.score.explanation.map((explanation) => (
+                <p
+                  className="rounded-md bg-[#edf3ea] px-3 py-2 text-[#2f6b4f]"
+                  key={explanation}
+                >
+                  {explanation}
+                </p>
+              ))}
+              {option.score.warnings.map((warning) => (
+                <p
+                  className="rounded-md bg-[#fff9df] px-3 py-2 text-[#5d4c1d]"
+                  key={warning}
+                >
+                  {warning}
+                </p>
+              ))}
+            </div>
+          ) : null}
         </div>
+      ) : hasExtraContext ? (
+        <p className="mt-2 text-xs font-medium text-[#637268]">
+          Transfer options, warnings, and more detail available - expand for
+          more.
+        </p>
       ) : null}
     </article>
   );
@@ -362,6 +418,7 @@ export function RankedAwardOptions({
         </div>
         <p className="text-sm text-[#637268]">
           {awardOptions.length} of {totalAwardOptionCount} award options shown
+          below
         </p>
       </div>
 
@@ -372,23 +429,25 @@ export function RankedAwardOptions({
           status={awardStatus}
         />
       ) : awardOptions.length > 0 ? (
-        awardOptions.map(({ directBalance, option, transferPaths }) => (
-          <AwardOptionCard
-            directBalance={directBalance}
-            key={option.id}
-            onViewRoute={(trigger) =>
-              onViewRoute(
-                {
-                  title: option.airlineProgram,
-                  routeDetail: option.routeDetail,
-                },
-                trigger,
-              )
-            }
-            option={option}
-            transferPaths={transferPaths}
-          />
-        ))
+        <div className="space-y-3">
+          {awardOptions.map(({ directBalance, option, transferPaths }) => (
+            <AwardOptionRow
+              directBalance={directBalance}
+              key={option.id}
+              onViewRoute={(trigger) =>
+                onViewRoute(
+                  {
+                    title: option.airlineProgram,
+                    routeDetail: option.routeDetail,
+                  },
+                  trigger,
+                )
+              }
+              option={option}
+              transferPaths={transferPaths}
+            />
+          ))}
+        </div>
       ) : (
         <ResultsEmptyState />
       )}

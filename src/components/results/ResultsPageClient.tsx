@@ -18,6 +18,7 @@ import {
 } from "@/components/results/RankedAwardOptions";
 import { ResultsFilters as ResultsFiltersPanel } from "@/components/results/ResultsFilters";
 import { ResultsHeader } from "@/components/results/ResultsHeader";
+import { ResultsSortSelect } from "@/components/results/ResultsSortSelect";
 import {
   RouteDetailsDrawer,
   type RouteDetailsDrawerState,
@@ -34,6 +35,7 @@ import {
   type ResultsFilters as ResultsFiltersState,
 } from "@/lib/results/filters";
 import { selectResultsSearch } from "@/lib/results/searchSelection";
+import { sortAwardOptions, type ResultsSortOption } from "@/lib/results/sorting";
 import { getTransferPathDisplays } from "@/lib/results/transferPaths";
 import { scoreAwardOptions } from "@/lib/scoring/recommendations";
 import { useSearchData } from "@/lib/search/useSearchData";
@@ -58,6 +60,7 @@ const defaultFilters: ResultsFiltersState = {
   maxOneStop: false,
   hideHighFeeAwards: false,
   businessCabinOnly: false,
+  liveOnly: false,
 };
 
 const fallbackSavedSearch: SavedSearch = {
@@ -225,6 +228,7 @@ export function ResultsPageClient(): JSX.Element {
       : baseSelectedSearch;
   const [filters, setFilters] =
     useState<ResultsFiltersState>(defaultFilters);
+  const [sort, setSort] = useState<ResultsSortOption>("best_match");
   const [saveStatus, setSaveStatus] = useState("");
   const [editFormState, setEditFormState] = useState<EditSearchFormState>(
     createEditFormState(fallbackSavedSearch),
@@ -333,15 +337,33 @@ export function ResultsPageClient(): JSX.Element {
     () => applyResultsFilters(decoratedAwardOptions, filters),
     [decoratedAwardOptions, filters],
   );
+  // bestAwardOption is chosen from the score-ranked (unsorted-for-display)
+  // filtered list, independent of the display sort below, so which option
+  // is "Best Overall" never changes just because the user picked a
+  // different sort order for the rows underneath it.
   const bestAwardOption =
     hasAwardResults
       ? (filteredAwardOptions.find(
           (option) => option.recommendationLabel === "best_overall",
         ) ?? filteredAwardOptions[0])
       : undefined;
+  // The hero card above already shows bestAwardOption in full detail, so it
+  // is excluded from the compact rows below to avoid showing the same
+  // option twice - the "remaining ranked options" from the mockup brief.
+  const remainingAwardOptions = useMemo(
+    () =>
+      filteredAwardOptions.filter(
+        (option) => option.id !== bestAwardOption?.id,
+      ),
+    [filteredAwardOptions, bestAwardOption],
+  );
+  const sortedRemainingAwardOptions = useMemo(
+    () => sortAwardOptions(remainingAwardOptions, sort),
+    [remainingAwardOptions, sort],
+  );
   const rankedAwardOptionViewModels = useMemo<RankedAwardOptionViewModel[]>(
     () =>
-      filteredAwardOptions.map((option) => ({
+      sortedRemainingAwardOptions.map((option) => ({
         directBalance: getDirectProgramBalance(
           accounts,
           option.airlineProgram,
@@ -349,7 +371,7 @@ export function ResultsPageClient(): JSX.Element {
         option,
         transferPaths: transferPathsByOptionId.get(option.id) ?? [],
       })),
-    [accounts, filteredAwardOptions, transferPathsByOptionId],
+    [accounts, sortedRemainingAwardOptions, transferPathsByOptionId],
   );
 
   function saveModalTrigger(trigger?: HTMLElement | null): void {
@@ -584,17 +606,17 @@ export function ResultsPageClient(): JSX.Element {
 
   return (
     <div className="space-y-6">
-      <ResultsHeader
-        bestAwardOption={bestAwardOption}
-        cashOption={cashOption}
-        selectedSearchName={selectedSearch.name}
-      />
-
       <SearchSummaryStrip
         onEdit={handleOpenEdit}
         onSave={handleSaveSearch}
         saveStatus={saveStatus}
         search={selectedSearch}
+      />
+
+      <ResultsHeader
+        bestAwardOption={bestAwardOption}
+        cashOption={cashOption}
+        selectedSearchName={selectedSearch.name}
       />
 
       {wallet.error ? (
@@ -641,10 +663,17 @@ export function ResultsPageClient(): JSX.Element {
       <section
         className={
           hasAwardResults
-            ? "grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]"
+            ? "grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]"
             : "grid gap-6"
         }
       >
+        {hasAwardResults ? (
+          <ResultsFiltersPanel
+            filters={filters}
+            onChangeFilter={handleChangeFilter}
+          />
+        ) : null}
+
         <div className="space-y-6">
           {hasAnyProviderResults ? (
             <>
@@ -667,6 +696,11 @@ export function ResultsPageClient(): JSX.Element {
               </div>
 
               <div className="space-y-3">
+                {hasAwardResults ? (
+                  <div className="flex justify-end">
+                    <ResultsSortSelect onChange={setSort} value={sort} />
+                  </div>
+                ) : null}
                 <RankedAwardOptions
                   awardOptions={rankedAwardOptionViewModels}
                   awardStatus={flightSearchResults.awards.status}
@@ -701,13 +735,6 @@ export function ResultsPageClient(): JSX.Element {
             </>
           )}
         </div>
-
-        {hasAwardResults ? (
-          <ResultsFiltersPanel
-            filters={filters}
-            onChangeFilter={handleChangeFilter}
-          />
-        ) : null}
       </section>
 
       {isEditOpen ? (
