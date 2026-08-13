@@ -14,9 +14,9 @@ const ROUTES = [
 ];
 
 const DATE_BUCKETS = [
-  { label: "near-term", daysOut: 21 },
-  { label: "mid-term", daysOut: 77 },
-  { label: "farther-out", daysOut: 168 },
+  { label: "near-term", date: "2026-09-03" },
+  { label: "mid-term", date: "2026-10-29" },
+  { label: "farther-out", date: "2027-01-28" },
 ];
 
 const SCORE_WEIGHTS = {
@@ -48,25 +48,8 @@ function parseArgs(argv) {
   return config;
 }
 
-function addDays(date, days) {
-  const nextDate = new Date(date);
-  nextDate.setUTCDate(nextDate.getUTCDate() + days);
-  return nextDate;
-}
-
-function formatDate(date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function getAuditDates(now = new Date()) {
-  const startOfToday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
-
-  return DATE_BUCKETS.map((bucket) => ({
-    ...bucket,
-    date: formatDate(addDays(startOfToday, bucket.daysOut)),
-  }));
+function getAuditDates() {
+  return DATE_BUCKETS;
 }
 
 function createSearch({ date, destination, origin }) {
@@ -252,6 +235,65 @@ function getCashPriceStats(cashOptions) {
   };
 }
 
+function getAwardPriceStats(awardOptions) {
+  const usablePoints = awardOptions
+    .map((option) => option.pointsRequired)
+    .filter((points) => Number.isFinite(points) && points > 0);
+  const usableFees = awardOptions
+    .map((option) => option.taxesAndFeesUsd)
+    .filter((fees) => Number.isFinite(fees) && fees >= 0);
+
+  return {
+    resultCount: awardOptions.length,
+    usablePointsCount: usablePoints.length,
+    usablePointsRate:
+      awardOptions.length === 0
+        ? 0
+        : Math.round((usablePoints.length / awardOptions.length) * 1000) / 10,
+    usableFeesCount: usableFees.length,
+    usableFeesRate:
+      awardOptions.length === 0
+        ? 0
+        : Math.round((usableFees.length / awardOptions.length) * 1000) / 10,
+    itineraryIds: awardOptions.map((option) => option.id),
+  };
+}
+
+function getProviderMode(envelope) {
+  const providerModes = [
+    envelope.cash.metadata.isLive,
+    envelope.awards.metadata.isLive,
+  ].map((isLive) => (isLive === true ? "live" : isLive === false ? "mock" : "unknown"));
+  const uniqueModes = [...new Set(providerModes)];
+
+  if (uniqueModes.length === 1) {
+    return uniqueModes[0];
+  }
+
+  if (uniqueModes.includes("unknown")) {
+    return "unknown";
+  }
+
+  return "mixed";
+}
+
+function getFallbackState(envelope) {
+  const expectedCashProvider = "travelpayouts";
+  const expectedAwardProvider = "seats-aero";
+  const cashFallbackTriggered =
+    envelope.cash.metadata.providerId !== expectedCashProvider;
+  const awardFallbackTriggered =
+    envelope.awards.metadata.providerId !== expectedAwardProvider;
+
+  return {
+    cashFallbackTriggered,
+    awardFallbackTriggered,
+    anyFallbackTriggered: cashFallbackTriggered || awardFallbackTriggered,
+    note:
+      "Fallback means the app route returned a provider other than the configured live provider target for that side. The route currently falls back to mocks when the corresponding live flag/key gate is not satisfied.",
+  };
+}
+
 function getRawPriceFields(option) {
   if (!option) {
     return null;
@@ -321,6 +363,8 @@ function normalizeRun({ envelope, receivedAt, runIndex, search }) {
   const awardOptions = envelope.awards.data ?? [];
   const selectedCashOption = cashOptions[0];
   const selectedAwardOption = awardOptions[0];
+  const cashStats = getCashPriceStats(cashOptions);
+  const awardStats = getAwardPriceStats(awardOptions);
   const centsPerPoint =
     selectedCashOption && selectedAwardOption
       ? calculateCentsPerPoint(
@@ -338,9 +382,18 @@ function normalizeRun({ envelope, receivedAt, runIndex, search }) {
     origin: search.originCodes.join(","),
     destination: search.destinationCodes.join(","),
     date: search.departDate,
+    providerMode: getProviderMode(envelope),
     providerQueried: {
       cash: envelope.cash.metadata.providerLabel,
       awards: envelope.awards.metadata.providerLabel,
+    },
+    fallback: getFallbackState(envelope),
+    resultCounts: {
+      cashResultsReturned: cashStats.resultCount,
+      awardResultsReturned: awardStats.resultCount,
+      resultsWithUsableCashPrice: cashStats.usablePriceCount,
+      resultsWithUsablePointsPrice: awardStats.usablePointsCount,
+      resultsWithUsableAwardFees: awardStats.usableFeesCount,
     },
     request: {
       appRoute: {
@@ -416,7 +469,8 @@ function normalizeRun({ envelope, receivedAt, runIndex, search }) {
       },
     },
     priceConsistency: {
-      cash: getCashPriceStats(cashOptions),
+      cash: cashStats,
+      awards: awardStats,
       currencies: [
         ...new Set(
           cashOptions
@@ -470,23 +524,30 @@ function compareRuns(runs) {
 
   const firstStats = firstRun.priceConsistency.cash;
   const secondStats = secondRun.priceConsistency.cash;
-  const delta =
+  const minDelta =
     firstStats.minPrice === null || secondStats.minPrice === null
       ? null
       : Math.round((secondStats.minPrice - firstStats.minPrice) * 100) / 100;
+  const medianDelta =
+    firstStats.medianPrice === null || secondStats.medianPrice === null
+      ? null
+      : Math.round((secondStats.medianPrice - firstStats.medianPrice) * 100) /
+        100;
   const sameItineraryIds =
     JSON.stringify(firstStats.itineraryIds) ===
     JSON.stringify(secondStats.itineraryIds);
   const materiallyDifferent =
     firstStats.resultCount !== secondStats.resultCount ||
     firstStats.usablePriceCount !== secondStats.usablePriceCount ||
-    delta !== 0 ||
+    minDelta !== 0 ||
+    medianDelta !== 0 ||
     !sameItineraryIds;
 
   return {
     run1Min: firstStats.minPrice,
     run2Min: secondStats.minPrice,
-    delta,
+    minDelta,
+    medianDelta,
     stable: !materiallyDifferent,
     notes: materiallyDifferent
       ? "Repeated calls differed in count, price, or itinerary identity."
@@ -506,17 +567,22 @@ function buildTables(records) {
 
   const routeCoverage = [];
   const priceConsistency = [];
+  const awardConsistency = [];
 
   for (const group of groups.values()) {
     const first = group[0];
     const stats = first.priceConsistency.cash;
+    const awardStats = first.priceConsistency.awards;
     const comparison = compareRuns(group);
+    const second = group[1];
 
     routeCoverage.push({
       origin: first.origin,
       destination: first.destination,
       date: first.date,
       provider: first.providerQueried.cash,
+      providerMode: first.providerMode,
+      fallbackTriggered: first.fallback.anyFallbackTriggered,
       resultsReturned: stats.resultCount,
       resultsWithPrice: stats.usablePriceCount,
       usablePricePercent: stats.usablePriceRate,
@@ -531,15 +597,43 @@ function buildTables(records) {
       origin: first.origin,
       destination: first.destination,
       date: first.date,
+      providerMode: first.providerMode,
+      fallbackTriggered: first.fallback.anyFallbackTriggered,
+      run1Results: stats.resultCount,
+      run2Results: second?.priceConsistency.cash.resultCount ?? null,
+      run1UsablePricePercent: stats.usablePriceRate,
+      run2UsablePricePercent:
+        second?.priceConsistency.cash.usablePriceRate ?? null,
       run1Min: comparison.run1Min ?? null,
       run2Min: comparison.run2Min ?? null,
-      delta: comparison.delta ?? null,
+      minDelta: comparison.minDelta ?? null,
+      medianDelta: comparison.medianDelta ?? null,
       stable: comparison.stable,
       notes: comparison.notes,
     });
+    awardConsistency.push({
+      origin: first.origin,
+      destination: first.destination,
+      date: first.date,
+      awardProviderActive: first.providerMetadata.awards.isLive,
+      providerMode: first.providerMode,
+      awardResults: awardStats.resultCount,
+      resultsWithPoints: awardStats.usablePointsCount,
+      resultsWithFees: awardStats.usableFeesCount,
+      cppCalculable:
+        first.normalized.calculatedCentsPerPoint === null ? "no" : "yes",
+      transferMappingConfidence:
+        first.providerMetadata.awards.providerId === "seats-aero"
+          ? "Medium: source slug is provider-backed; card transfer mapping is app-derived static data."
+          : "High for deterministic mock data.",
+      notes:
+        awardStats.usableFeesCount === 0
+          ? "Award fees missing; CPP should display N/A."
+          : "Award points and fees available for selected app option.",
+    });
   }
 
-  return { priceConsistency, routeCoverage };
+  return { awardConsistency, priceConsistency, routeCoverage };
 }
 
 function getOverallUsablePriceRate(records) {
@@ -658,10 +752,26 @@ function renderMarkdownReport({ generatedAt, records, tables }) {
     Origin: row.origin,
     Destination: row.destination,
     Date: row.date,
-    "Run 1 Min": row.run1Min ?? "N/A",
-    "Run 2 Min": row.run2Min ?? "N/A",
-    Delta: row.delta ?? "N/A",
+    "Run 1 Results": row.run1Results,
+    "Run 2 Results": row.run2Results ?? "N/A",
+    "Run 1 Usable Price %": row.run1UsablePricePercent,
+    "Run 2 Usable Price %": row.run2UsablePricePercent ?? "N/A",
+    "Min Price Delta": row.minDelta ?? "N/A",
+    "Median Price Delta": row.medianDelta ?? "N/A",
     Stable: row.stable === null ? "N/A" : row.stable ? "yes" : "no",
+    "Provider Mode": row.providerMode,
+    Notes: row.notes,
+  }));
+  const awardConsistencyRows = tables.awardConsistency.map((row) => ({
+    Origin: row.origin,
+    Destination: row.destination,
+    Date: row.date,
+    "Award Provider Active?": row.awardProviderActive ? "yes" : "no",
+    "Award Results": row.awardResults,
+    "Results With Points": row.resultsWithPoints,
+    "Results With Fees": row.resultsWithFees,
+    "CPP Calculable?": row.cppCalculable,
+    "Transfer Mapping Confidence": row.transferMappingConfidence,
     Notes: row.notes,
   }));
   const calculationRows = [
@@ -785,8 +895,39 @@ ${renderMarkdownTable(
 ### Price Consistency
 
 ${renderMarkdownTable(
-  ["Origin", "Destination", "Date", "Run 1 Min", "Run 2 Min", "Delta", "Stable", "Notes"],
+  [
+    "Origin",
+    "Destination",
+    "Date",
+    "Run 1 Results",
+    "Run 2 Results",
+    "Run 1 Usable Price %",
+    "Run 2 Usable Price %",
+    "Min Price Delta",
+    "Median Price Delta",
+    "Stable",
+    "Provider Mode",
+    "Notes",
+  ],
   priceConsistencyRows,
+)}
+
+### Award Data Consistency
+
+${renderMarkdownTable(
+  [
+    "Origin",
+    "Destination",
+    "Date",
+    "Award Provider Active?",
+    "Award Results",
+    "Results With Points",
+    "Results With Fees",
+    "CPP Calculable?",
+    "Transfer Mapping Confidence",
+    "Notes",
+  ],
+  awardConsistencyRows,
 )}
 
 ### Calculation Validation
