@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const ROUTES = [
@@ -30,12 +30,18 @@ const SCORE_WEIGHTS = {
 function parseArgs(argv) {
   const config = {
     baseUrl: process.env.AUDIT_BASE_URL ?? "http://localhost:3001",
+    preflightOnly: process.env.AUDIT_PREFLIGHT_ONLY === "true",
+    requireLive: process.env.AUDIT_REQUIRE_LIVE === "true",
     runs: Number(process.env.AUDIT_RUNS ?? 2),
   };
 
   for (const arg of argv) {
     if (arg.startsWith("--base-url=")) {
       config.baseUrl = arg.slice("--base-url=".length);
+    } else if (arg === "--preflight-only") {
+      config.preflightOnly = true;
+    } else if (arg === "--require-live") {
+      config.requireLive = true;
     } else if (arg.startsWith("--runs=")) {
       config.runs = Number(arg.slice("--runs=".length));
     }
@@ -46,6 +52,169 @@ function parseArgs(argv) {
   }
 
   return config;
+}
+
+function parseEnvFile(content) {
+  const entries = {};
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+
+    if (!match) {
+      continue;
+    }
+
+    const [, key, rawValue] = match;
+    let value = rawValue.trim();
+
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    entries[key] = value;
+  }
+
+  return entries;
+}
+
+async function getLocalEnvValues() {
+  const envFiles = [
+    ".env",
+    ".env.development",
+    ".env.local",
+    ".env.development.local",
+  ];
+  const values = {};
+  const loadedFiles = [];
+
+  for (const envFile of envFiles) {
+    try {
+      const content = await readFile(path.join(process.cwd(), envFile), "utf8");
+      Object.assign(values, parseEnvFile(content));
+      loadedFiles.push(envFile);
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  return {
+    loadedFiles,
+    values: {
+      ...values,
+      ENABLE_LIVE_CASH_PROVIDER:
+        process.env.ENABLE_LIVE_CASH_PROVIDER ??
+        values.ENABLE_LIVE_CASH_PROVIDER,
+      TRAVELPAYOUTS_TOKEN:
+        process.env.TRAVELPAYOUTS_TOKEN ?? values.TRAVELPAYOUTS_TOKEN,
+      ENABLE_LIVE_AWARD_PROVIDER:
+        process.env.ENABLE_LIVE_AWARD_PROVIDER ??
+        values.ENABLE_LIVE_AWARD_PROVIDER,
+      SEATS_AERO_API_KEY:
+        process.env.SEATS_AERO_API_KEY ?? values.SEATS_AERO_API_KEY,
+    },
+  };
+}
+
+function getFlagState(value) {
+  if (value === undefined) {
+    return "missing";
+  }
+
+  if (value === "true") {
+    return "present/value-valid";
+  }
+
+  return "present/value-invalid";
+}
+
+function getSecretState(value) {
+  return typeof value === "string" && value.length > 0 ? "present" : "missing";
+}
+
+function getProviderModeFromReadiness(readiness) {
+  const cashRequested = readiness.cash.flagEnabled;
+  const awardRequested = readiness.awards.flagEnabled;
+  const cashLive = readiness.cash.active;
+  const awardLive = readiness.awards.active;
+  const unavailableRequestedProvider =
+    (cashRequested && !cashLive) || (awardRequested && !awardLive);
+
+  if (cashLive && awardLive) {
+    return "live";
+  }
+
+  if (cashLive || awardLive) {
+    return "mixed";
+  }
+
+  if (unavailableRequestedProvider) {
+    return "unavailable";
+  }
+
+  return "mock";
+}
+
+async function getLiveProviderReadiness() {
+  const { loadedFiles, values } = await getLocalEnvValues();
+  const cashFlagEnabled = values.ENABLE_LIVE_CASH_PROVIDER === "true";
+  const cashTokenPresent = getSecretState(values.TRAVELPAYOUTS_TOKEN) === "present";
+  const awardFlagEnabled = values.ENABLE_LIVE_AWARD_PROVIDER === "true";
+  const awardKeyPresent = getSecretState(values.SEATS_AERO_API_KEY) === "present";
+  const readiness = {
+    loadedEnvFiles: loadedFiles,
+    cash: {
+      flag: getFlagState(values.ENABLE_LIVE_CASH_PROVIDER),
+      credential: getSecretState(values.TRAVELPAYOUTS_TOKEN),
+      flagEnabled: cashFlagEnabled,
+      active: cashFlagEnabled && cashTokenPresent,
+    },
+    awards: {
+      flag: getFlagState(values.ENABLE_LIVE_AWARD_PROVIDER),
+      credential: getSecretState(values.SEATS_AERO_API_KEY),
+      flagEnabled: awardFlagEnabled,
+      active: awardFlagEnabled && awardKeyPresent,
+    },
+    warnings: [],
+  };
+
+  if (cashFlagEnabled && !cashTokenPresent) {
+    readiness.warnings.push(
+      "live cash requested but TRAVELPAYOUTS_TOKEN missing; cash provider will fall back to mock",
+    );
+  }
+
+  if (awardFlagEnabled && !awardKeyPresent) {
+    readiness.warnings.push(
+      "live award requested but SEATS_AERO_API_KEY missing; award provider will fall back to mock",
+    );
+  }
+
+  readiness.providerMode = getProviderModeFromReadiness(readiness);
+
+  return readiness;
+}
+
+function renderPreflight(readiness) {
+  return [
+    "Live provider preflight:",
+    `ENABLE_LIVE_CASH_PROVIDER=${readiness.cash.flag}`,
+    `TRAVELPAYOUTS_TOKEN=${readiness.cash.credential}`,
+    `ENABLE_LIVE_AWARD_PROVIDER=${readiness.awards.flag}`,
+    `SEATS_AERO_API_KEY=${readiness.awards.credential}`,
+    `providerMode=${readiness.providerMode}`,
+    ...readiness.warnings.map((warning) => `warning=${warning}`),
+  ].join("\n");
 }
 
 function getAuditDates() {
@@ -261,9 +430,28 @@ function getAwardPriceStats(awardOptions) {
 
 function getProviderMode(envelope) {
   const providerModes = [
-    envelope.cash.metadata.isLive,
-    envelope.awards.metadata.isLive,
-  ].map((isLive) => (isLive === true ? "live" : isLive === false ? "mock" : "unknown"));
+    envelope.cash,
+    envelope.awards,
+  ].map((providerEnvelope) => {
+    const unavailableStatuses = new Set([
+      "error",
+      "rate_limited",
+      "unsupported_route",
+    ]);
+
+    if (providerEnvelope.metadata.isLive === true) {
+      return unavailableStatuses.has(providerEnvelope.status) &&
+        providerEnvelope.data.length === 0
+        ? "unavailable"
+        : "live";
+    }
+
+    if (providerEnvelope.metadata.isLive === false) {
+      return "mock";
+    }
+
+    return "unknown";
+  });
   const uniqueModes = [...new Set(providerModes)];
 
   if (uniqueModes.length === 1) {
@@ -963,8 +1151,27 @@ Full normalized run details are in audit-output/flight-price-audit.json.
 async function main() {
   const config = parseArgs(process.argv.slice(2));
   const generatedAt = new Date().toISOString();
+  const providerReadiness = await getLiveProviderReadiness();
   const dates = getAuditDates();
   const records = [];
+
+  console.log(renderPreflight(providerReadiness));
+
+  if (config.requireLive && providerReadiness.providerMode === "unavailable") {
+    throw new Error(
+      "Live provider audit aborted: live provider was requested but no provider credentials are active.",
+    );
+  }
+
+  if (config.requireLive && providerReadiness.providerMode === "mock") {
+    throw new Error(
+      "Live provider audit aborted: no live provider flags are enabled.",
+    );
+  }
+
+  if (config.preflightOnly) {
+    return;
+  }
 
   for (const [origin, destination] of ROUTES) {
     for (const { date } of dates) {
@@ -987,6 +1194,7 @@ async function main() {
   const artifact = {
     generatedAt,
     baseUrl: config.baseUrl,
+    providerReadiness,
     assumptions: {
       passengers: 1,
       cabin: "economy",
