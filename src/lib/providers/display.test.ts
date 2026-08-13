@@ -263,6 +263,29 @@ describe("provider display helpers", () => {
     });
   });
 
+  it("names the provider that actually ran in the missing-cash description, not a fixed provider name", () => {
+    expect(
+      getNoProviderResultsDisplay({
+        hasOtherResults: true,
+        kind: "cash",
+        providerLabel: "Mock Cash Provider",
+        status: "no_results",
+      }),
+    ).toMatchObject({
+      description: expect.stringContaining("Mock Cash Provider did not have"),
+    });
+
+    const liveResult = getNoProviderResultsDisplay({
+      hasOtherResults: true,
+      kind: "cash",
+      providerLabel: "Travelpayouts",
+      status: "no_results",
+    });
+
+    expect(liveResult.description).toContain("Travelpayouts did not have");
+    expect(liveResult.description).not.toContain("Mock Cash Provider");
+  });
+
   it("describes missing award data without implying a recommendation exists", () => {
     expect(
       getNoProviderResultsDisplay({

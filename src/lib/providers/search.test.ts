@@ -109,11 +109,13 @@ function createProviders({
     cashProvider: {
       id: "cash",
       label: "Cash",
+      isLive: false,
       searchCashFlights: vi.fn().mockResolvedValue(cashEnvelope),
     },
     awardProvider: {
       id: "award",
       label: "Award",
+      isLive: false,
       searchAwardFlights: vi.fn().mockResolvedValue(awardEnvelope),
     },
   };
@@ -325,11 +327,13 @@ describe("searchFlightsWithProviders", () => {
       cashProvider: {
         id: "cash",
         label: "Cash",
+        isLive: false,
         searchCashFlights: vi.fn().mockRejectedValue(new Error("Provider failed")),
       },
       awardProvider: {
         id: "award",
         label: "Award",
+        isLive: false,
         searchAwardFlights: vi.fn().mockResolvedValue(
           createEnvelope({
             data: [awardOption],
@@ -363,6 +367,42 @@ describe("searchFlightsWithProviders", () => {
         data: [awardOption],
       },
       overallStatus: "partial",
+    });
+  });
+
+  it("marks a crashed live provider's envelope as isLive: true, not mock/demo data", async () => {
+    const providers: FlightSearchProviderSet = {
+      cashProvider: {
+        id: "travelpayouts",
+        label: "Travelpayouts",
+        isLive: true,
+        searchCashFlights: vi.fn().mockRejectedValue(new Error("Provider failed")),
+      },
+      awardProvider: {
+        id: "award",
+        label: "Award",
+        isLive: false,
+        searchAwardFlights: vi.fn().mockResolvedValue(
+          createEnvelope({
+            data: [awardOption],
+            providerId: "award",
+            providerLabel: "Award",
+            status: "success",
+          }),
+        ),
+      },
+    };
+
+    const results = await searchFlightsWithProviders(search, providers);
+
+    expect(results.cash).toMatchObject({
+      status: "error",
+      data: [],
+      metadata: {
+        providerId: "travelpayouts",
+        providerLabel: "Travelpayouts",
+        isLive: true,
+      },
     });
   });
 });

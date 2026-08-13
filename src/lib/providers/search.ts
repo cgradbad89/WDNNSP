@@ -9,10 +9,12 @@ import type {
 } from "@/lib/providers/types";
 
 function createProviderExceptionEnvelope<T>({
+  isLive,
   providerId,
   providerLabel,
   providerType,
 }: {
+  isLive: boolean;
   providerId: string;
   providerLabel: string;
   providerType: "cash" | "award";
@@ -20,13 +22,17 @@ function createProviderExceptionEnvelope<T>({
   const providerTypeLabel = providerType === "cash" ? "Cash" : "Award";
 
   return {
+    // A thrown live-provider call is a genuine failure, not mock data - the
+    // "error" status (rather than falsely reporting isLive: false, which
+    // would render as "Demo data" in the UI) is what tells the UI to show
+    // an unavailable/error state instead.
     status: "error",
     data: [],
     metadata: {
       providerId,
       providerLabel,
       searchedAt: new Date().toISOString(),
-      isLive: false,
+      isLive,
     },
     messages: [
       {
@@ -46,6 +52,7 @@ async function searchCashProvider(
     return await provider.searchCashFlights(search);
   } catch {
     return createProviderExceptionEnvelope({
+      isLive: provider.isLive,
       providerId: provider.id,
       providerLabel: provider.label,
       providerType: "cash",
@@ -61,6 +68,7 @@ async function searchAwardProvider(
     return await provider.searchAwardFlights(search);
   } catch {
     return createProviderExceptionEnvelope({
+      isLive: provider.isLive,
       providerId: provider.id,
       providerLabel: provider.label,
       providerType: "award",

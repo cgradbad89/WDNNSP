@@ -484,5 +484,6 @@ export async function searchSeatsAeroAwardFlights(
 export const seatsAeroAwardFlightProvider: AwardFlightProvider = {
   id: SEATS_AERO_PROVIDER_ID,
   label: SEATS_AERO_PROVIDER_LABEL,
+  isLive: true,
   searchAwardFlights: searchSeatsAeroAwardFlights,
 };

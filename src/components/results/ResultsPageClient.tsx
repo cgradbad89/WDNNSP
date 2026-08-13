@@ -269,7 +269,7 @@ export function ResultsPageClient(): JSX.Element {
             message:
               error instanceof Error
                 ? error.message
-                : "Mock flight results could not be loaded.",
+                : "Flight results could not be loaded.",
             searchId: selectedSearch.id,
           });
         }
@@ -578,7 +578,7 @@ export function ResultsPageClient(): JSX.Element {
           Results
         </p>
         <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[#14211b]">
-          Mock results could not load
+          Results could not load
         </h2>
         <p className="mt-2 text-sm leading-6 text-[#5d4c1d]">
           {currentProviderError} Try running the search again.
@@ -594,7 +594,7 @@ export function ResultsPageClient(): JSX.Element {
           Results
         </p>
         <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[#14211b]">
-          Loading mock comparison
+          Loading price comparison
         </h2>
         <p className="mt-2 text-sm leading-6 text-[#637268]">
           Cash and award providers are preparing results for{" "}
@@ -687,6 +687,7 @@ export function ResultsPageClient(): JSX.Element {
                   cashOption={recommendationResults.cashOption}
                   hasAwardResults={hasAwardResults}
                   passengers={selectedSearch.passengers}
+                  providerLabel={flightSearchResults.cash.metadata.providerLabel}
                   status={flightSearchResults.cash.status}
                 />
                 <ProviderSourceNote
@@ -705,6 +706,10 @@ export function ResultsPageClient(): JSX.Element {
                   awardOptions={rankedAwardOptionViewModels}
                   awardStatus={flightSearchResults.awards.status}
                   cashOption={recommendationResults.cashOption}
+                  cashProviderSource={{
+                    isLive: flightSearchResults.cash.metadata.isLive,
+                    providerLabel: flightSearchResults.cash.metadata.providerLabel,
+                  }}
                   hasCashResults={hasCashResults}
                   hasProviderAwardResults={hasAwardResults}
                   onViewRoute={handleOpenRouteDetails}

@@ -17,17 +17,20 @@ const toneClasses = {
 interface NoProviderResultsStateProps {
   hasOtherResults?: boolean;
   kind: ProviderResultKind;
+  providerLabel?: string;
   status: ProviderStatus;
 }
 
 export function NoProviderResultsState({
   hasOtherResults,
   kind,
+  providerLabel,
   status,
 }: NoProviderResultsStateProps): JSX.Element {
   const display = getNoProviderResultsDisplay({
     hasOtherResults,
     kind,
+    providerLabel,
     status,
   });
 

@@ -70,6 +70,7 @@ function createMockProviderEnvelope<T>({
 export const mockCashFlightProvider: CashFlightProvider = {
   id: MOCK_CASH_PROVIDER_ID,
   label: MOCK_CASH_PROVIDER_LABEL,
+  isLive: false,
   async searchCashFlights(search) {
     return createMockProviderEnvelope({
       data: getMockCashFlightsForSearch(search),
@@ -83,6 +84,7 @@ export const mockCashFlightProvider: CashFlightProvider = {
 export const mockAwardFlightProvider: AwardFlightProvider = {
   id: MOCK_AWARD_PROVIDER_ID,
   label: MOCK_AWARD_PROVIDER_LABEL,
+  isLive: false,
   async searchAwardFlights(search) {
     return createMockProviderEnvelope({
       data: getMockAwardFlightsForSearch(search),

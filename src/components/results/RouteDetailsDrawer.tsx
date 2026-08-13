@@ -3,11 +3,23 @@
 import type { JSX } from "react";
 import { useEffect, useRef } from "react";
 import { formatDuration } from "@/lib/results/routeDetails";
+import type { ProviderSourceState } from "@/lib/providers/sourceLabel";
 import type { RouteDetail } from "@/types/flights";
 
 export interface RouteDetailsDrawerState {
   title: string;
   routeDetail?: RouteDetail;
+  providerSource: ProviderSourceState;
+}
+
+function getMissingRouteDetailMessage(
+  providerSource: ProviderSourceState,
+): string {
+  if (providerSource.isLive) {
+    return `Route details are not available for this ${providerSource.providerLabel} option.`;
+  }
+
+  return "Route details are not available for this mock option.";
 }
 
 interface RouteDetailsDrawerProps {
@@ -116,7 +128,7 @@ export function RouteDetailsDrawer({
           </div>
         ) : (
           <p className="mt-5 rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-4 text-sm leading-6 text-[#526158]">
-            Route details are not available for this mock option.
+            {getMissingRouteDetailMessage(modal.providerSource)}
           </p>
         )}
       </section>

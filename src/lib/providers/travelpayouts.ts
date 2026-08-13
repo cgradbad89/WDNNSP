@@ -418,5 +418,6 @@ export async function searchTravelpayoutsCashFlights(
 export const travelpayoutsCashFlightProvider: CashFlightProvider = {
   id: TRAVELPAYOUTS_PROVIDER_ID,
   label: TRAVELPAYOUTS_PROVIDER_LABEL,
+  isLive: true,
   searchCashFlights: searchTravelpayoutsCashFlights,
 };

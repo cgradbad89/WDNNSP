@@ -2,6 +2,7 @@
 
 import type { JSX } from "react";
 import { isStaleProviderData } from "@/lib/providers/status";
+import { getProviderLiveStatusLabel } from "@/lib/providers/sourceLabel";
 import type { ProviderResultEnvelope } from "@/lib/providers/types";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
@@ -49,7 +50,7 @@ export function ProviderSourceNote<T>({
           <span className="font-semibold text-[#24382d]">{label} source:</span>{" "}
           {envelope.metadata.providerLabel}
         </span>
-        <span>{envelope.metadata.isLive ? "Live provider" : "Demo data"}</span>
+        <span>{getProviderLiveStatusLabel(envelope.metadata.isLive)}</span>
         <span>Checked {formatProviderDateTime(envelope.metadata.searchedAt)}</span>
         {envelope.metadata.expiresAt ? (
           <span>

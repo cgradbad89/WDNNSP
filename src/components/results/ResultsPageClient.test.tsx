@@ -163,16 +163,22 @@ const obscureOption = createAwardOption({
 
 function buildEnvelope(
   awardOptions: AwardFlightOption[],
+  cashOverrides: {
+    data?: CashFlightOption[];
+    isLive?: boolean;
+    providerLabel?: string;
+    status?: FlightSearchEnvelope["cash"]["status"];
+  } = {},
 ): FlightSearchEnvelope {
   return {
     cash: {
-      status: "success",
-      data: [cashOption],
+      status: cashOverrides.status ?? "success",
+      data: cashOverrides.data ?? [cashOption],
       metadata: {
         providerId: "mock-cash",
-        providerLabel: "Mock Cash Provider",
+        providerLabel: cashOverrides.providerLabel ?? "Mock Cash Provider",
         searchedAt: "2027-01-01T00:00:00.000Z",
-        isLive: false,
+        isLive: cashOverrides.isLive ?? false,
       },
       messages: [],
     },
@@ -200,8 +206,11 @@ vi.mock("@/lib/providers/client", () => ({
 
 async function renderResultsWithOptions(
   awardOptions: AwardFlightOption[],
+  cashOverrides?: Parameters<typeof buildEnvelope>[1],
 ): Promise<void> {
-  searchFlightsViaApiMock.mockResolvedValue(buildEnvelope(awardOptions));
+  searchFlightsViaApiMock.mockResolvedValue(
+    buildEnvelope(awardOptions, cashOverrides),
+  );
   render(<ResultsPageClient />);
   await screen.findByText("Transfer points to United MileagePlus");
 }
@@ -465,6 +474,107 @@ describe("ResultsPageClient sort control", () => {
 
     expect(
       screen.getByText("Transfer points to United MileagePlus"),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("ResultsPageClient live-vs-mock provider labels", () => {
+  it("labels a live cash result with the real provider name and never says Mock anywhere on the page", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption], {
+      isLive: true,
+      providerLabel: "Travelpayouts",
+    });
+
+    // These are the exact strings the audit flagged as hardcoded "Mock",
+    // shown here replaced with the real provider name and live status -
+    // the same derivation ProviderSourceNote already used correctly.
+    expect(screen.getByText("Live cash price")).toBeInTheDocument();
+    expect(screen.queryByText("Mock cash price")).not.toBeInTheDocument();
+    expect(screen.getByText("Travelpayouts · Live")).toBeInTheDocument();
+
+    const cashSourceNote = screen.getByLabelText("Cash benchmark source details");
+
+    expect(within(cashSourceNote).getByText("Travelpayouts")).toBeInTheDocument();
+    expect(within(cashSourceNote).getByText("Live provider")).toBeInTheDocument();
+    expect(within(cashSourceNote).queryByText("Demo data")).not.toBeInTheDocument();
+  });
+
+  it("keeps the Mock cash price label and Mock source tile for genuinely mock cash data", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption]);
+
+    expect(screen.getByText("Mock cash price")).toBeInTheDocument();
+    expect(
+      screen.getByText("Mock", { selector: "p.text-lg" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Live cash price")).not.toBeInTheDocument();
+  });
+
+  it("names the provider that actually ran in the empty-cash-results copy, not a provider that was never called", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption], {
+      data: [],
+      isLive: false,
+      providerLabel: "Mock Cash Provider",
+      status: "no_results",
+    });
+
+    expect(
+      screen.getByText(/Mock Cash Provider did not have a cached/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Travelpayouts/)).not.toBeInTheDocument();
+  });
+
+  it("names the live provider in the empty-cash-results copy when the live provider ran and returned nothing", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption], {
+      data: [],
+      isLive: true,
+      providerLabel: "Travelpayouts",
+      status: "no_results",
+    });
+
+    expect(
+      screen.getByText(/Travelpayouts did not have a cached/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the real provider name instead of 'mock' in the route details drawer for a live-sourced row missing route detail", async () => {
+    const liveRowOption = createAwardOption({
+      id: "opt-live-row",
+      airlineProgram: "Lufthansa Miles & More",
+      source: "seats_aero",
+      pointsRequired: 200000,
+      taxesAndFeesUsd: 250,
+      confidence: "low",
+      durationMinutes: 1200,
+      provider: { providerId: "seats-aero", providerLabel: "Seats.aero" },
+      freshness: { isLive: true },
+    });
+
+    await renderResultsWithOptions([heroOption, aeroplanOption, liveRowOption]);
+
+    const liveRow = screen
+      .getByText("Lufthansa Miles & More")
+      .closest("article") as HTMLElement;
+    fireEvent.click(
+      within(liveRow).getByRole("button", { name: "View route details" }),
+    );
+
+    expect(
+      screen.getByText("Route details are not available for this Seats.aero option."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the 'mock option' route details message for a genuinely mock row missing route detail", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption]);
+
+    const mockRow = screen
+      .getByText("Air Canada Aeroplan")
+      .closest("article") as HTMLElement;
+    fireEvent.click(
+      within(mockRow).getByRole("button", { name: "View route details" }),
+    );
+
+    expect(
+      screen.getByText("Route details are not available for this mock option."),
     ).toBeInTheDocument();
   });
 });

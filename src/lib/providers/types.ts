@@ -43,6 +43,12 @@ export interface FlightSearchEnvelope {
 export interface CashFlightProvider {
   id: string;
   label: string;
+  // Whether this provider calls a live external data source (vs. a
+  // deterministic mock generator). Used to correctly label the envelope
+  // produced when this provider throws - see createProviderExceptionEnvelope
+  // in src/lib/providers/search.ts - so a crashed live provider is never
+  // mislabeled as mock/demo data.
+  isLive: boolean;
   searchCashFlights(
     search: SavedSearch,
   ): Promise<ProviderResultEnvelope<CashFlightOption>>;
@@ -51,6 +57,7 @@ export interface CashFlightProvider {
 export interface AwardFlightProvider {
   id: string;
   label: string;
+  isLive: boolean;
   searchAwardFlights(
     search: SavedSearch,
   ): Promise<ProviderResultEnvelope<AwardFlightOption>>;

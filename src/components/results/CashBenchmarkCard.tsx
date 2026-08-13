@@ -53,6 +53,7 @@ interface CashBenchmarkCardProps {
   cashOption: ScoredCashOption | undefined;
   hasAwardResults: boolean;
   passengers: number;
+  providerLabel: string;
   status: ProviderStatus;
 }
 
@@ -60,6 +61,7 @@ export function CashBenchmarkCard({
   cashOption,
   hasAwardResults,
   passengers,
+  providerLabel,
   status,
 }: CashBenchmarkCardProps): JSX.Element {
   if (!cashOption) {
@@ -67,6 +69,7 @@ export function CashBenchmarkCard({
       <NoProviderResultsState
         hasOtherResults={hasAwardResults}
         kind="cash"
+        providerLabel={providerLabel}
         status={status}
       />
     );

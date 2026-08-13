@@ -112,9 +112,12 @@ function getProviderResultsMode({
   return "none";
 }
 
-function getMissingCashDescription(hasOtherResults: boolean): string {
+function getMissingCashDescription(
+  hasOtherResults: boolean,
+  providerLabel: string,
+): string {
   if (hasOtherResults) {
-    return "Award options are still shown, but Travelpayouts did not have a cached month-level cash fare for this route, so WDNNSP cannot calculate a cash-backed cents-per-point value.";
+    return `Award options are still shown, but ${providerLabel} did not have a cached month-level cash fare for this route, so WDNNSP cannot calculate a cash-backed cents-per-point value.`;
   }
 
   return "The cash provider did not return a cached month-level fare benchmark for this route.";
@@ -184,10 +187,12 @@ export function getFlightSearchDisplayState(
 export function getNoProviderResultsDisplay({
   hasOtherResults = false,
   kind,
+  providerLabel = "the cash provider",
   status,
 }: {
   hasOtherResults?: boolean;
   kind: ProviderResultKind;
+  providerLabel?: string;
   status: ProviderStatus;
 }): ProviderStatusDisplay {
   if (kind === "cash") {
@@ -195,7 +200,7 @@ export function getNoProviderResultsDisplay({
       status,
       tone: statusDisplays[status].tone,
       title: "Cash benchmark unavailable",
-      description: getMissingCashDescription(hasOtherResults),
+      description: getMissingCashDescription(hasOtherResults, providerLabel),
     };
   }
 

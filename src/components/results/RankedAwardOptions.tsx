@@ -18,6 +18,10 @@ import type {
   ScoredCashOption,
 } from "@/lib/scoring/recommendations";
 import type { ProviderStatus } from "@/lib/providers/types";
+import {
+  getProviderSourceSummary,
+  type ProviderSourceState,
+} from "@/lib/providers/sourceLabel";
 import type { Cabin, RouteDetail } from "@/types/flights";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
@@ -98,6 +102,19 @@ function getRouteSummary(option: {
   }
 
   return `${option.origin} -> ${option.destination}`;
+}
+
+// Award options carry their own per-result provider/freshness data (set by
+// each provider module - see src/lib/providers/mock.ts,
+// travelpayouts.ts, seatsAero.ts), so an award row can derive its live/mock
+// state directly from the option instead of assuming mock.
+function getAwardOptionProviderSource(
+  option: ScoredAwardOption,
+): ProviderSourceState {
+  return {
+    isLive: option.freshness?.isLive ?? false,
+    providerLabel: option.provider?.providerLabel ?? option.airlineProgram,
+  };
 }
 
 function ChevronIcon({
@@ -306,11 +323,13 @@ function AwardOptionRow({
 interface CashOptionCardProps {
   onViewRoute: (trigger: HTMLElement) => void;
   option: ScoredCashOption;
+  providerSource: ProviderSourceState;
 }
 
 function CashOptionCard({
   onViewRoute,
   option,
+  providerSource,
 }: CashOptionCardProps): JSX.Element {
   return (
     <article className="rounded-lg border border-[#ead99d] bg-[#fffdf6] p-5">
@@ -333,7 +352,7 @@ function CashOptionCard({
         </div>
         <div className="text-left lg:text-right">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#637268]">
-            Mock cash price
+            {providerSource.isLive ? "Live cash price" : "Mock cash price"}
           </p>
           <p className="mt-1 text-3xl font-semibold text-[#14211b]">
             {formatCurrency(option.cashPriceUsd)}
@@ -346,7 +365,9 @@ function CashOptionCard({
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
             Source
           </p>
-          <p className="mt-2 text-lg font-semibold text-[#14211b]">Mock</p>
+          <p className="mt-2 text-lg font-semibold text-[#14211b]">
+            {getProviderSourceSummary(providerSource)}
+          </p>
         </div>
         <div className="rounded-md border border-[#ead99d] bg-white p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#637268]">
@@ -390,6 +411,7 @@ interface RankedAwardOptionsProps {
   awardStatus: ProviderStatus;
   awardOptions: RankedAwardOptionViewModel[];
   cashOption: ScoredCashOption | undefined;
+  cashProviderSource: ProviderSourceState;
   hasCashResults: boolean;
   hasProviderAwardResults: boolean;
   onViewRoute: (modal: RouteDetailsDrawerState, trigger: HTMLElement) => void;
@@ -400,6 +422,7 @@ export function RankedAwardOptions({
   awardStatus,
   awardOptions,
   cashOption,
+  cashProviderSource,
   hasCashResults,
   hasProviderAwardResults,
   onViewRoute,
@@ -439,6 +462,7 @@ export function RankedAwardOptions({
                   {
                     title: option.airlineProgram,
                     routeDetail: option.routeDetail,
+                    providerSource: getAwardOptionProviderSource(option),
                   },
                   trigger,
                 )
@@ -459,11 +483,13 @@ export function RankedAwardOptions({
               {
                 title: "Cash Fare Benchmark",
                 routeDetail: cashOption.routeDetail,
+                providerSource: cashProviderSource,
               },
               trigger,
             )
           }
           option={cashOption}
+          providerSource={cashProviderSource}
         />
       ) : null}
     </section>
