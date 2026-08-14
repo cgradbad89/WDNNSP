@@ -44,7 +44,7 @@ Build in this order:
 9. Saved searches
 10. Real API integrations later
 
-Do not implement live Duffel, Amadeus, Seats.aero, airline scraping, account syncing, booking flows, or alerts unless explicitly requested.
+Do not implement live Duffel, Seats.aero, airline scraping, account syncing, booking flows, or alerts unless explicitly requested.
 
 ## Non-Goals
 
@@ -122,7 +122,7 @@ Deferred:         [anything not completed, or "none"]
 | Access model | Authenticated personal data; no role-based permissions for MVP |
 | Live flight APIs | Not Phase 1; mock/manual providers first |
 | Award data | Mock/manual first; Seats.aero-style provider abstraction later |
-| Cash flight data | Mock/manual first; Duffel/Amadeus-style provider abstraction later |
+| Cash flight data | Mock/manual first; structured provider abstraction later |
 | Booking | Out of scope |
 | Account syncing | Out of scope |
 | Airline scraping | Out of scope |
@@ -308,11 +308,15 @@ Provider integrations should follow this pattern:
    secrets on the server side.
 7. Add a live provider later without changing UI contracts.
 
-Do not hardcode Duffel, Amadeus, Seats.aero, or any airline-specific API shape into UI components.
+Do not hardcode Duffel, Seats.aero, or any airline-specific API shape into UI components.
 
-The only current flight-search API route is `POST /api/search/flights`. It is
-mock-backed, does not require auth yet, and should return only app-owned success
-or safe error responses.
+The only current flight-search API route is `POST /api/search/flights`. It does
+not require auth yet, selects mock providers by default for local/test use, and
+can select configured live providers behind server-side env flags. If live cash
+mode is explicitly requested but required credentials are unavailable, return a
+safe unavailable-provider envelope instead of silently falling back to mock cash.
+Route responses should remain app-owned success envelopes or safe error
+responses.
 
 ## Provider Results UX Rules
 

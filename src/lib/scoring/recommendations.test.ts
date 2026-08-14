@@ -209,6 +209,23 @@ describe("scoreAwardOptions", () => {
     expect(result.rankedAwardOptions[0].cashComparableUsd).toBe(7100);
   });
 
+  it("does not create CPP or Best Overall labels without a cash comparison option", () => {
+    const result = scoreAwardOptions(
+      [createAwardOption({ id: "aeroplan" })],
+      undefined,
+      accounts,
+      transferPartners,
+    );
+
+    expect(result.cashOption).toBeUndefined();
+    expect(result.bestAwardOption).toBeUndefined();
+    expect(result.rankedAwardOptions[0].cashComparableUsd).toBeUndefined();
+    expect(result.rankedAwardOptions[0].centsPerPoint).toBeUndefined();
+    expect(result.rankedAwardOptions[0].recommendationLabel).toBe(
+      "not_comparable",
+    );
+  });
+
   it("assigns best value and lowest fees labels to non-top awards", () => {
     const result = scoreAwardOptions(
       [

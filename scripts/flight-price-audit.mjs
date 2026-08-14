@@ -168,8 +168,12 @@ function getProviderModeFromReadiness(readiness) {
 
 async function getLiveProviderReadiness() {
   const { loadedFiles, values } = await getLocalEnvValues();
-  const cashFlagEnabled = values.ENABLE_LIVE_CASH_PROVIDER === "true";
-  const cashTokenPresent = getSecretState(values.TRAVELPAYOUTS_TOKEN) === "present";
+  const travelpayoutsFlagEnabled = values.ENABLE_LIVE_CASH_PROVIDER === "true";
+  const travelpayoutsTokenPresent =
+    getSecretState(values.TRAVELPAYOUTS_TOKEN) === "present";
+  const travelpayoutsReady =
+    travelpayoutsFlagEnabled && travelpayoutsTokenPresent;
+  const activeCashProvider = travelpayoutsReady ? "travelpayouts" : null;
   const awardFlagEnabled = values.ENABLE_LIVE_AWARD_PROVIDER === "true";
   const awardKeyPresent = getSecretState(values.SEATS_AERO_API_KEY) === "present";
   const readiness = {
@@ -177,8 +181,17 @@ async function getLiveProviderReadiness() {
     cash: {
       flag: getFlagState(values.ENABLE_LIVE_CASH_PROVIDER),
       credential: getSecretState(values.TRAVELPAYOUTS_TOKEN),
-      flagEnabled: cashFlagEnabled,
-      active: cashFlagEnabled && cashTokenPresent,
+      flagEnabled: travelpayoutsFlagEnabled,
+      active: activeCashProvider !== null,
+      activeProvider: activeCashProvider,
+      candidates: {
+        travelpayouts: {
+          flag: getFlagState(values.ENABLE_LIVE_CASH_PROVIDER),
+          credential: getSecretState(values.TRAVELPAYOUTS_TOKEN),
+          flagEnabled: travelpayoutsFlagEnabled,
+          ready: travelpayoutsReady,
+        },
+      },
     },
     awards: {
       flag: getFlagState(values.ENABLE_LIVE_AWARD_PROVIDER),
@@ -189,9 +202,9 @@ async function getLiveProviderReadiness() {
     warnings: [],
   };
 
-  if (cashFlagEnabled && !cashTokenPresent) {
+  if (travelpayoutsFlagEnabled && !travelpayoutsTokenPresent) {
     readiness.warnings.push(
-      "live cash requested but TRAVELPAYOUTS_TOKEN missing; cash provider will fall back to mock",
+      "Travelpayouts cash requested but TRAVELPAYOUTS_TOKEN missing; cash provider will return an unavailable envelope, not mock",
     );
   }
 
@@ -213,6 +226,7 @@ function renderPreflight(readiness) {
     `TRAVELPAYOUTS_TOKEN=${readiness.cash.credential}`,
     `ENABLE_LIVE_AWARD_PROVIDER=${readiness.awards.flag}`,
     `SEATS_AERO_API_KEY=${readiness.awards.credential}`,
+    `cashProviderTarget=${readiness.cash.activeProvider ?? "none"}`,
     `providerMode=${readiness.providerMode}`,
     ...readiness.warnings.map((warning) => `warning=${warning}`),
   ].join("\n");
@@ -467,10 +481,10 @@ function getProviderMode(envelope) {
 }
 
 function getFallbackState(envelope) {
-  const expectedCashProvider = "travelpayouts";
+  const expectedCashProviders = new Set(["travelpayouts"]);
   const expectedAwardProvider = "seats-aero";
   const cashFallbackTriggered =
-    envelope.cash.metadata.providerId !== expectedCashProvider;
+    !expectedCashProviders.has(envelope.cash.metadata.providerId);
   const awardFallbackTriggered =
     envelope.awards.metadata.providerId !== expectedAwardProvider;
 
@@ -479,7 +493,7 @@ function getFallbackState(envelope) {
     awardFallbackTriggered,
     anyFallbackTriggered: cashFallbackTriggered || awardFallbackTriggered,
     note:
-      "Fallback means the app route returned a provider other than the configured live provider target for that side. The route currently falls back to mocks when the corresponding live flag/key gate is not satisfied.",
+      "Fallback means the app route returned a provider other than the configured live provider target for that side. Cash providers requested with incomplete env return unavailable envelopes instead of mock cash; award fallback behavior is unchanged.",
   };
 }
 
@@ -766,6 +780,42 @@ function compareRuns(runs) {
   };
 }
 
+function getCashAvailabilityState(record) {
+  const cashStatus = record.status?.cash;
+  const cashMetadata = record.providerMetadata.cash;
+  const resultCount = record.priceConsistency.cash.resultCount;
+
+  if (cashMetadata.providerId === "no-cash-provider") {
+    return {
+      kind: "no_cash_provider_configured",
+      note: "No production cash provider is configured; the app returned an explicit unavailable cash envelope.",
+    };
+  }
+
+  if (
+    cashMetadata.isLive === true &&
+    resultCount === 0 &&
+    ["error", "rate_limited", "unsupported_route"].includes(cashStatus)
+  ) {
+    return {
+      kind: "live_cash_unavailable",
+      note: "Live cash provider was requested but returned an unavailable envelope; do not treat this as a live cash price.",
+    };
+  }
+
+  if (cashMetadata.isLive === true) {
+    return {
+      kind: "live_cash",
+      note: "Live provider envelope; raw third-party payload not exposed.",
+    };
+  }
+
+  return {
+    kind: "mock_cash",
+    note: "Mock provider envelope.",
+  };
+}
+
 function buildTables(records) {
   const groups = new Map();
 
@@ -786,25 +836,28 @@ function buildTables(records) {
     const awardStats = first.priceConsistency.awards;
     const comparison = compareRuns(group);
     const second = group[1];
+    const cashAvailability = getCashAvailabilityState(first);
 
     routeCoverage.push({
       origin: first.origin,
       destination: first.destination,
       date: first.date,
       provider: first.providerQueried.cash,
+      cashAvailability: cashAvailability.kind,
       providerMode: first.providerMode,
       fallbackTriggered: first.fallback.anyFallbackTriggered,
       resultsReturned: stats.resultCount,
       resultsWithPrice: stats.usablePriceCount,
       usablePricePercent: stats.usablePriceRate,
       notes:
-        stats.resultCount === 0
+        cashAvailability.kind === "live_cash_unavailable" ||
+        cashAvailability.kind === "no_cash_provider_configured"
+          ? cashAvailability.note
+          : stats.resultCount === 0
           ? "Zero cached cash fare results returned; coverage gap, not missing returned prices."
           : stats.usablePriceRate < 80
             ? "P1: fewer than 80% of returned cash options have usable prices."
-            : first.providerMetadata.cash.isLive
-              ? "Live provider envelope; raw third-party payload not exposed."
-              : "Mock provider envelope.",
+            : cashAvailability.note,
     });
     priceConsistency.push({
       origin: first.origin,
@@ -1025,6 +1078,7 @@ function renderMarkdownReport({ generatedAt, records, tables }) {
     Destination: row.destination,
     Date: row.date,
     Provider: row.provider,
+    "Cash Availability": row.cashAvailability,
     "Results Returned": row.resultsReturned,
     "Results With Price": row.resultsWithPrice,
     "Usable Price %": row.usablePricePercent,
@@ -1091,9 +1145,9 @@ function renderMarkdownReport({ generatedAt, records, tables }) {
     {
       "Displayed Field": "Cash price",
       Source: "CashFlightOption.cashPriceUsd / priceBreakdown.total.amount",
-      Transform: "Travelpayouts mapEntryToCashFlightOption or mock cash generator",
+      Transform: "Travelpayouts mapEntryToCashFlightOption, future structured-provider mapper, or mock cash generator",
       Confidence: "High for normalized field; Medium for live fare semantics",
-      Notes: "Travelpayouts amount is cached month-level total; taxes separate missing/unclear.",
+      Notes: "Travelpayouts amount is cached month-level total; future structured providers should preserve normalized price fields; taxes separate missing/unclear.",
     },
     {
       "Displayed Field": "Award points",
@@ -1169,6 +1223,7 @@ ${renderMarkdownTable(
     "Destination",
     "Date",
     "Provider",
+    "Cash Availability",
     "Results Returned",
     "Results With Price",
     "Usable Price %",
@@ -1234,11 +1289,11 @@ ${renderMarkdownTable(
 
 1. UI search path: /search saves an active SavedSearch, /results selects the active search, calls searchFlightsViaApi(), which posts to /api/search/flights.
 2. Test path: unit/provider/component tests call pure helpers, mocked provider clients, or mocked searchFlightsViaApi(); live APIs are not used in deterministic tests.
-3. Flight data source: current route handler selects Travelpayouts for cash only when ENABLE_LIVE_CASH_PROVIDER and TRAVELPAYOUTS_TOKEN are set, otherwise mock cash. It selects Seats.aero for awards only when ENABLE_LIVE_AWARD_PROVIDER and SEATS_AERO_API_KEY are set, otherwise mock awards.
-4. Cash price source: CashFlightOption.cashPriceUsd from Travelpayouts prices/cheap or mock data.
-5. Same provider?: cash and award sources are separate; mock/mock can be paired, or Travelpayouts cash can be paired with Seats.aero/mock awards depending on env.
-6. Mock/cached/hard-coded data: mock data is deterministic; Travelpayouts is cached month-level fare data; Seats.aero Cached Search is date-level cached availability; static airports and transfer partners are local data.
-7. Real-vs-fallback distinction: provider envelopes include metadata.isLive and provider labels; the route silently falls back to mocks when live flags/secrets are absent.
+3. Flight data source: current route handler preserves a provider abstraction for a future structured cash provider, selects Travelpayouts when ENABLE_LIVE_CASH_PROVIDER and TRAVELPAYOUTS_TOKEN are valid, otherwise returns no cash result in production or mock cash in local/test. It selects Seats.aero for awards only when ENABLE_LIVE_AWARD_PROVIDER and SEATS_AERO_API_KEY are set, otherwise mock awards.
+4. Cash price source: CashFlightOption.cashPriceUsd from Travelpayouts prices/cheap, future structured-provider normalization, or local/test mock data.
+5. Same provider?: cash and award sources are separate; mock/mock can be paired locally, or Travelpayouts cash can be paired with Seats.aero/mock awards depending on env.
+6. Mock/cached/hard-coded data: mock data is deterministic and local/test-only for cash; Travelpayouts is cached month-level fare data; Seats.aero Cached Search is date-level cached availability; static airports and transfer partners are local data.
+7. Real-vs-fallback distinction: provider envelopes include metadata.isLive and provider labels; requested-but-unready cash providers now return explicit unavailable live-provider envelopes instead of silently falling back to mock cash. Award fallback behavior remains unchanged.
 
 ## Raw Detail
 

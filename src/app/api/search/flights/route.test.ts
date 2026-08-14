@@ -231,6 +231,7 @@ describe("POST /api/search/flights", () => {
 
   describe("live cash provider toggle", () => {
     const originalEnableFlag = process.env.ENABLE_LIVE_CASH_PROVIDER;
+    const originalNodeEnv = process.env.NODE_ENV;
     const originalToken = process.env.TRAVELPAYOUTS_TOKEN;
 
     afterEach(() => {
@@ -245,10 +246,17 @@ describe("POST /api/search/flights", () => {
       } else {
         process.env.TRAVELPAYOUTS_TOKEN = originalToken;
       }
+
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
     });
 
-    it("uses the mock cash provider when the flag is off", async () => {
+    it("uses the mock cash provider for local/test when the flag is off", async () => {
       process.env.ENABLE_LIVE_CASH_PROVIDER = "false";
+      process.env.NODE_ENV = "test";
       process.env.TRAVELPAYOUTS_TOKEN = "test-token";
       vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
         cash: createSuccessEnvelope(),
@@ -264,7 +272,45 @@ describe("POST /api/search/flights", () => {
       expect(providers.cashProvider.id).toBe("mock-cash");
     });
 
-    it("uses the mock cash provider when the token is missing, even if the flag is on", async () => {
+    it("returns no cash provider in production when no cash provider is configured", async () => {
+      process.env.ENABLE_LIVE_CASH_PROVIDER = "false";
+      process.env.NODE_ENV = "production";
+      delete process.env.TRAVELPAYOUTS_TOKEN;
+      vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
+        cash: createSuccessEnvelope(),
+        awards: createSuccessEnvelope(),
+        overallStatus: "success",
+        messages: [],
+      });
+
+      await POST(createRequest({ search: validSearch }));
+
+      const providers = vi.mocked(searchModule.searchFlightsWithProviders).mock
+        .calls[0][1];
+      expect(providers.cashProvider.id).toBe("no-cash-provider");
+      expect(providers.cashProvider.isLive).toBe(false);
+      await expect(
+        providers.cashProvider.searchCashFlights(validSearch),
+      ).resolves.toMatchObject({
+        status: "error",
+        data: [],
+        metadata: {
+          providerId: "no-cash-provider",
+          providerLabel: "No Cash Provider",
+          isLive: false,
+        },
+        messages: [
+          {
+            code: "cash_provider_not_configured",
+            severity: "error",
+            message: "No production cash provider is configured. Configure a structured cash provider or Travelpayouts to show cash results.",
+            internalReasons: ["cash_provider_not_configured"],
+          },
+        ],
+      });
+    });
+
+    it("returns an unavailable Travelpayouts provider when the token is missing, not mock cash", async () => {
       process.env.ENABLE_LIVE_CASH_PROVIDER = "true";
       delete process.env.TRAVELPAYOUTS_TOKEN;
       vi.mocked(searchModule.searchFlightsWithProviders).mockResolvedValueOnce({
@@ -278,7 +324,34 @@ describe("POST /api/search/flights", () => {
 
       const providers = vi.mocked(searchModule.searchFlightsWithProviders).mock
         .calls[0][1];
-      expect(providers.cashProvider.id).toBe("mock-cash");
+      expect(providers.cashProvider.id).toBe("travelpayouts");
+      expect(providers.cashProvider.isLive).toBe(true);
+      await expect(
+        providers.cashProvider.searchCashFlights(validSearch),
+      ).resolves.toMatchObject({
+        status: "error",
+        data: [],
+        metadata: {
+          providerId: "travelpayouts",
+          providerLabel: "Travelpayouts",
+          isLive: true,
+        },
+        messages: [
+          {
+            code: "travelpayouts_not_configured",
+            severity: "error",
+            message:
+              "Travelpayouts cash provider is enabled but unavailable because required credentials are missing.",
+            internalReasons: ["missing_travelpayouts_token"],
+          },
+        ],
+      });
+      const unavailableEnvelope =
+        await providers.cashProvider.searchCashFlights(validSearch);
+      const messageText = JSON.stringify(unavailableEnvelope.messages);
+
+      expect(messageText).not.toContain("TRAVELPAYOUTS_TOKEN");
+      expect(messageText).not.toContain("test-token");
     });
 
     it("uses the live Travelpayouts cash provider when the flag is on and a token is set", async () => {

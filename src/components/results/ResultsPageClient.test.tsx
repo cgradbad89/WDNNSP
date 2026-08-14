@@ -198,6 +198,7 @@ function buildEnvelope(
   awardOptions: AwardFlightOption[],
   cashOverrides: {
     data?: CashFlightOption[];
+    messages?: FlightSearchEnvelope["cash"]["messages"];
     isLive?: boolean;
     overallStatus?: FlightSearchEnvelope["overallStatus"];
     awardStatus?: FlightSearchEnvelope["awards"]["status"];
@@ -215,7 +216,7 @@ function buildEnvelope(
         searchedAt: "2027-01-01T00:00:00.000Z",
         isLive: cashOverrides.isLive ?? false,
       },
-      messages: [],
+      messages: cashOverrides.messages ?? [],
     },
     awards: {
       status: cashOverrides.awardStatus ?? "success",
@@ -229,7 +230,7 @@ function buildEnvelope(
       messages: [],
     },
     overallStatus: cashOverrides.overallStatus ?? "success",
-    messages: [],
+    messages: [...(cashOverrides.messages ?? [])],
   };
 }
 
@@ -428,6 +429,37 @@ describe("ResultsPageClient hero card and compact rows", () => {
       screen.queryByText("No provider results for Test Trip"),
     ).not.toBeInTheDocument();
     expect(screen.getByText("United MileagePlus")).toBeInTheDocument();
+  });
+
+  it("shows explicit unavailable-cash provider errors without promoting fake CPP or cash best labels", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption], {
+      data: [],
+      isLive: true,
+      messages: [
+        {
+          code: "travelpayouts_not_configured",
+          severity: "error",
+          message:
+            "Travelpayouts cash provider is enabled but unavailable because required credentials are missing.",
+          internalReasons: ["missing_travelpayouts_token"],
+        },
+      ],
+      overallStatus: "partial",
+      providerLabel: "Travelpayouts",
+      status: "error",
+    });
+
+    expect(screen.getByText("Partial results for Test Trip")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Travelpayouts cash provider is enabled but unavailable because required credentials are missing.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("United MileagePlus")).toBeInTheDocument();
+    expect(screen.getByText("Cash fare estimate unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Pay cash")).not.toBeInTheDocument();
+    expect(screen.queryByText("Best Overall")).not.toBeInTheDocument();
+    expect(screen.queryByText("$0")).not.toBeInTheDocument();
   });
 
   it("uses cash-results header language when cash is visible but award rows are unavailable", async () => {

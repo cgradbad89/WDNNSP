@@ -6,8 +6,13 @@ import {
 } from "./flight-price-audit.mjs";
 
 function createRecord({
+  cashProviderId = "travelpayouts",
+  cashProviderIsLive = true,
+  cashProviderLabel = "Travelpayouts",
   cashResults,
+  cashStatus = "success",
   date,
+  fallbackTriggered = true,
   itineraryIds,
   runIndex,
   usablePrices,
@@ -18,18 +23,23 @@ function createRecord({
     destination: "ATL",
     date,
     providerMode: "mixed",
+    status: {
+      cash: cashStatus,
+      awards: "success",
+      overall: cashStatus === "success" ? "success" : "partial",
+    },
     providerQueried: {
-      cash: "Travelpayouts",
+      cash: cashProviderLabel,
       awards: "Mock Award Provider",
     },
     fallback: {
-      anyFallbackTriggered: true,
+      anyFallbackTriggered: fallbackTriggered,
     },
     providerMetadata: {
       cash: {
-        providerId: "travelpayouts",
-        providerLabel: "Travelpayouts",
-        isLive: true,
+        providerId: cashProviderId,
+        providerLabel: cashProviderLabel,
+        isLive: cashProviderIsLive,
       },
       awards: {
         providerId: "mock-awards",
@@ -124,5 +134,75 @@ describe("flight price audit report classification", () => {
       "Repeated returned-price stability: stable for route/date combinations with returned results.",
     );
     expect(report).not.toContain("Routes with unstable prices");
+  });
+
+  it("reports no-cash-provider as unavailable without naming a removed candidate", () => {
+    const records = [
+      createRecord({
+        cashProviderId: "no-cash-provider",
+        cashProviderIsLive: false,
+        cashProviderLabel: "No Cash Provider",
+        cashResults: 0,
+        date: "2026-09-03",
+        fallbackTriggered: true,
+        itineraryIds: [],
+        runIndex: 1,
+        usablePrices: 0,
+      }),
+    ];
+    const tables = buildTables(records);
+    const report = renderMarkdownReport({
+      generatedAt: "2026-08-13T00:00:00.000Z",
+      records,
+      tables,
+    });
+
+    expect(tables.routeCoverage[0]).toMatchObject({
+      cashAvailability: "no_cash_provider_configured",
+      provider: "No Cash Provider",
+      fallbackTriggered: true,
+      notes: "No production cash provider is configured; the app returned an explicit unavailable cash envelope.",
+    });
+    expect(report).toContain(
+      "future structured-provider normalization",
+    );
+    expect(report).toContain(
+      "otherwise returns no cash result in production or mock cash in local/test",
+    );
+    expect(report).toContain("no_cash_provider_configured");
+  });
+
+  it("reports requested live cash as unavailable when no live cash prices are returned from an error envelope", () => {
+    const records = [
+      createRecord({
+        cashProviderId: "travelpayouts",
+        cashProviderIsLive: true,
+        cashProviderLabel: "Travelpayouts",
+        cashResults: 0,
+        cashStatus: "error",
+        date: "2026-09-03",
+        fallbackTriggered: false,
+        itineraryIds: [],
+        runIndex: 1,
+        usablePrices: 0,
+      }),
+    ];
+    const tables = buildTables(records);
+    const report = renderMarkdownReport({
+      generatedAt: "2026-08-13T00:00:00.000Z",
+      records,
+      tables,
+    });
+
+    expect(tables.routeCoverage[0]).toMatchObject({
+      cashAvailability: "live_cash_unavailable",
+      provider: "Travelpayouts",
+      fallbackTriggered: false,
+      resultsReturned: 0,
+      resultsWithPrice: 0,
+      notes:
+        "Live cash provider was requested but returned an unavailable envelope; do not treat this as a live cash price.",
+    });
+    expect(report).toContain("live_cash_unavailable");
   });
 });

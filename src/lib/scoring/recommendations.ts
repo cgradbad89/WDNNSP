@@ -430,6 +430,7 @@ function assignRecommendationLabels(
   rankedAwardOptions: Array<
     Omit<ScoredAwardOption, "recommendationLabel"> & {
       hasEnoughPoints: boolean;
+      hasCashComparisonBasis: boolean;
       isComparableForRecommendation: boolean;
     }
   >,
@@ -437,10 +438,12 @@ function assignRecommendationLabels(
   const labels = new Map<string, RecommendationLabel>();
 
   for (const option of rankedAwardOptions) {
-    if (!option.isComparableForRecommendation) {
+    if (!option.isComparableForRecommendation && option.hasCashComparisonBasis) {
       labels.set(option.id, "not_comparable");
     } else if (!option.hasEnoughPoints) {
       labels.set(option.id, "not_enough_points");
+    } else if (!option.isComparableForRecommendation) {
+      labels.set(option.id, "not_comparable");
     }
   }
 
@@ -501,7 +504,13 @@ function assignRecommendationLabels(
   }
 
   return rankedAwardOptions.map(
-    ({ hasEnoughPoints, isComparableForRecommendation, ...option }) => {
+    ({
+      hasCashComparisonBasis,
+      hasEnoughPoints,
+      isComparableForRecommendation,
+      ...option
+    }) => {
+      void hasCashComparisonBasis;
       void hasEnoughPoints;
       void isComparableForRecommendation;
 
@@ -529,8 +538,10 @@ export function scoreAwardOptions(
       cashOption && search
         ? getCashAwardComparability({ search, cashOption, awardOption })
         : undefined;
+    const hasCashComparisonBasis = cashOption !== undefined;
     const isComparable =
-      !comparability || comparability.status === "comparable";
+      hasCashComparisonBasis &&
+      (!comparability || comparability.status === "comparable");
     const centsPerPoint =
       cashOption && isComparable
         ? calculateCentsPerPoint(
@@ -553,6 +564,7 @@ export function scoreAwardOptions(
         pointsFit,
         comparability,
       ),
+      hasCashComparisonBasis,
       hasEnoughPoints: pointsFit.hasEnoughPoints,
       isComparableForRecommendation:
         isComparable && isEligibleForBookableRecommendation(awardOption),
