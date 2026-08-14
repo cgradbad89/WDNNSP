@@ -167,6 +167,30 @@ function getSavedSearchKey(search: SavedSearch): string {
   ].join("|");
 }
 
+function NoSafeRecommendationState(): JSX.Element {
+  return (
+    <article
+      className="rounded-xl border border-[#ead99d] bg-[#fffdf6] p-6 text-[#14211b] shadow-[0_18px_50px_rgba(31,63,45,0.08)] md:p-8"
+      role="status"
+    >
+      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#5d4c1d]">
+        Verification needed
+      </p>
+      <h3 className="mt-3 text-3xl font-semibold tracking-tight">
+        Options need verification
+      </h3>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-[#526158]">
+        We found award options, but none are comparable enough to recommend yet.
+        Review the details below before transferring points or booking.
+      </p>
+      <p className="mt-3 max-w-2xl text-xs leading-5 text-[#637268]">
+        Common reasons include benchmark-only cash pricing, unknown fees, stale
+        availability, cabin mismatch, or incomplete itinerary data.
+      </p>
+    </article>
+  );
+}
+
 function isDuplicateSearch(
   leftSearch: SavedSearch,
   rightSearch: SavedSearch,
@@ -340,16 +364,17 @@ export function ResultsPageClient(): JSX.Element {
     () => applyResultsFilters(decoratedAwardOptions, filters),
     [decoratedAwardOptions, filters],
   );
-  // bestAwardOption is chosen from the score-ranked (unsorted-for-display)
-  // filtered list, independent of the display sort below, so which option
-  // is "Best Overall" never changes just because the user picked a
-  // different sort order for the rows underneath it.
+  // bestAwardOption is chosen only from true score-approved recommendations.
+  // Non-comparable rows can still appear in the ranked list, but they must not
+  // be promoted into the large hero recommendation slot.
   const bestAwardOption =
     hasAwardResults
-      ? (filteredAwardOptions.find(
+      ? filteredAwardOptions.find(
           (option) => option.recommendationLabel === "best_overall",
-        ) ?? filteredAwardOptions[0])
+        )
       : undefined;
+  const shouldShowNoSafeRecommendationState =
+    hasAwardResults && filteredAwardOptions.length > 0 && !bestAwardOption;
   // The hero card above already shows bestAwardOption in full detail, so it
   // is excluded from the compact rows below to avoid showing the same
   // option twice - the "remaining ranked options" from the mockup brief.
@@ -685,6 +710,9 @@ export function ResultsPageClient(): JSX.Element {
                 bestAwardOption={bestAwardOption}
                 cashBenchmark={cashOption?.cashPriceUsd}
               />
+              {shouldShowNoSafeRecommendationState ? (
+                <NoSafeRecommendationState />
+              ) : null}
 
               <div className="space-y-3">
                 <CashBenchmarkCard

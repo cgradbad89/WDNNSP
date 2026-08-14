@@ -195,6 +195,8 @@ function buildEnvelope(
   cashOverrides: {
     data?: CashFlightOption[];
     isLive?: boolean;
+    overallStatus?: FlightSearchEnvelope["overallStatus"];
+    awardStatus?: FlightSearchEnvelope["awards"]["status"];
     providerLabel?: string;
     status?: FlightSearchEnvelope["cash"]["status"];
   } = {},
@@ -212,7 +214,7 @@ function buildEnvelope(
       messages: [],
     },
     awards: {
-      status: "success",
+      status: cashOverrides.awardStatus ?? "success",
       data: awardOptions,
       metadata: {
         providerId: "mock-award",
@@ -222,7 +224,7 @@ function buildEnvelope(
       },
       messages: [],
     },
-    overallStatus: "success",
+    overallStatus: cashOverrides.overallStatus ?? "success",
     messages: [],
   };
 }
@@ -241,7 +243,7 @@ async function renderResultsWithOptions(
     buildEnvelope(awardOptions, cashOverrides),
   );
   render(<ResultsPageClient />);
-  await screen.findByText("Transfer points to United MileagePlus");
+  await screen.findByText("Results");
 }
 
 const unreportedFieldsAwardOption = createAwardOption({
@@ -304,6 +306,7 @@ describe("ResultsPageClient hero card and compact rows", () => {
 
     // Hero card (BestRecommendationCard) shows the top pick.
     expect(screen.getByText("Transfer points to United MileagePlus")).toBeInTheDocument();
+    expect(screen.queryByText("Options need verification")).not.toBeInTheDocument();
 
     // The same option is not duplicated as a compact row below.
     expect(getRowProgramNames()).toEqual([
@@ -311,6 +314,50 @@ describe("ResultsPageClient hero card and compact rows", () => {
       "Air France-KLM Flying Blue",
       "Obscure Airways Program",
     ]);
+  });
+
+  it("shows a neutral verification state instead of promoting a non-comparable first award to the hero", async () => {
+    await renderResultsWithOptions([obscureOption]);
+
+    expect(screen.getByText("Options need verification")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "We found award options, but none are comparable enough to recommend yet. Review the details below before transferring points or booking.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Best Overall")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Transfer points to Obscure Airways Program"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps non-comparable award options in the regular ranked list when no safe hero recommendation exists", async () => {
+    await renderResultsWithOptions([obscureOption]);
+
+    const obscureRow = screen
+      .getByText("Obscure Airways Program")
+      .closest("article");
+
+    expect(obscureRow).not.toBeNull();
+    expect(
+      within(obscureRow as HTMLElement).getByText("Needs Verification"),
+    ).toBeInTheDocument();
+    expect(getRowProgramNames()).toEqual(["Obscure Airways Program"]);
+  });
+
+  it("preserves the normal no-provider-results state when providers return no award or cash options", async () => {
+    await renderResultsWithOptions([], {
+      data: [],
+      awardStatus: "no_results",
+      overallStatus: "no_results",
+      status: "no_results",
+    });
+
+    expect(
+      screen.getAllByText("No provider results for this search").length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText("Options need verification")).not.toBeInTheDocument();
+    expect(screen.queryByText("Best Overall")).not.toBeInTheDocument();
   });
 
   it("shows transfer-required and not-enough-points badges for the right rows", async () => {
