@@ -519,6 +519,17 @@ Phase 1B uses default point-valuation assumptions from
 assumptions are product defaults, not personalized market prices, and should be
 treated as tunable copy/config until user-specific valuation controls exist.
 
+As of Phase 1C (August 14, 2026), live provider responses are validated at the
+provider DTO boundary before normalization. Seats.aero and Travelpayouts
+payloads must have the expected top-level shape, and malformed rows are skipped
+with safe provider warnings instead of being trusted. Partial valid/invalid
+responses may still return partial usable results, but missing points, prices,
+dates, cabins, fees, or provider identity are not fabricated. Invalid rows do
+not enter CPP, Best Overall, Best Points Value, Lowest Out of Pocket, or exact
+cash comparability paths. Future work still includes the live Seats.aero pilot,
+actionable transfer-path generation, user-configurable valuations, and full
+itinerary deduplication.
+
 ---
 
 #### 5.9 Results Page

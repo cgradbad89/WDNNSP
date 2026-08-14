@@ -1,5 +1,15 @@
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
 import { createSearchFingerprint } from "@/lib/comparison/searchFingerprint";
+import {
+  addValidationReason,
+  createValidationWarningMessage,
+  getFiniteNumber,
+  getPositiveNumber,
+  getTrimmedString,
+  isRecord,
+  isUsableDateString,
+  type ProviderValidationSummary,
+} from "@/lib/providers/dtoValidation";
 import type {
   CashFlightProvider,
   ProviderMessage,
@@ -22,16 +32,10 @@ const TRAVELPAYOUTS_CURRENCY = "usd";
 interface TravelpayoutsCheapPriceEntry {
   price: number;
   airline: string;
-  flight_number: number;
+  flight_number: number | string;
   departure_at: string;
   return_at?: string;
-  expires_at: string;
-}
-
-interface TravelpayoutsCheapResponse {
-  success: boolean;
-  data: Record<string, Record<string, TravelpayoutsCheapPriceEntry>>;
-  error?: string | null;
+  expires_at?: string;
 }
 
 const staleDataMessage: ProviderMessage = {
@@ -76,6 +80,12 @@ const requestFailedMessage: ProviderMessage = {
   code: "travelpayouts_request_failed",
   severity: "error",
   message: "Live cash provider request failed.",
+};
+
+const invalidPayloadMessage: ProviderMessage = {
+  code: "travelpayouts_invalid_payload",
+  severity: "error",
+  message: "Live cash provider returned an unexpected response shape.",
 };
 
 function buildEnvelope({
@@ -131,7 +141,7 @@ function mapEntryToCashFlightOption({
     freshness: {
       searchedAt,
       lastCheckedAt: searchedAt,
-      expiresAt: entry.expires_at,
+      ...(entry.expires_at ? { expiresAt: entry.expires_at } : {}),
       isLive: true,
       isStale: true,
       staleReason:
@@ -189,19 +199,110 @@ function mapEntryToCashFlightOption({
   };
 }
 
+function getTravelpayoutsCurrency(payload: Record<string, unknown>): string | undefined {
+  const rawCurrency =
+    getTrimmedString(payload.currency) ??
+    getTrimmedString(payload.Currency) ??
+    TRAVELPAYOUTS_CURRENCY;
+  const normalizedCurrency = rawCurrency.toUpperCase();
+
+  return normalizedCurrency === "USD" ? normalizedCurrency : undefined;
+}
+
+function validateTravelpayoutsEntry({
+  destinationIata,
+  entry,
+  index,
+  summary,
+}: {
+  destinationIata: string;
+  entry: unknown;
+  index: string;
+  summary: ProviderValidationSummary;
+}): TravelpayoutsCheapPriceEntry | undefined {
+  const rowPath = `data.${destinationIata}.${index}`;
+
+  if (!isRecord(entry)) {
+    addValidationReason(summary, rowPath, "row_not_object");
+    return undefined;
+  }
+
+  const price = getPositiveNumber(entry.price);
+  const airline = getTrimmedString(entry.airline);
+  const flightNumber =
+    getFiniteNumber(entry.flight_number) ??
+    getTrimmedString(entry.flight_number);
+  const departureAt = getTrimmedString(entry.departure_at);
+  const expiresAt = getTrimmedString(entry.expires_at);
+
+  if (price === undefined) {
+    addValidationReason(summary, rowPath, "price_invalid");
+    return undefined;
+  }
+
+  if (!airline || flightNumber === undefined || flightNumber === "") {
+    addValidationReason(summary, rowPath, "flight_identity_missing");
+    return undefined;
+  }
+
+  if (!isUsableDateString(departureAt)) {
+    addValidationReason(summary, rowPath, "departure_date_invalid");
+    return undefined;
+  }
+
+  if (expiresAt !== undefined && !isUsableDateString(expiresAt)) {
+    addValidationReason(summary, rowPath, "expires_date_invalid");
+    return undefined;
+  }
+
+  return {
+    price,
+    airline,
+    flight_number: flightNumber,
+    departure_at: departureAt,
+    ...(isUsableDateString(entry.return_at)
+      ? { return_at: entry.return_at }
+      : {}),
+    ...(expiresAt ? { expires_at: expiresAt } : {}),
+  };
+}
+
 function flattenCheapResponse(
-  data: TravelpayoutsCheapResponse["data"],
+  data: Record<string, unknown>,
   origin: string,
   search: SavedSearch,
-): CashFlightOption[] {
+): {
+  options: CashFlightOption[];
+  validation: ProviderValidationSummary;
+} {
   const searchedAt = new Date().toISOString();
   const options: CashFlightOption[] = [];
+  const validation: ProviderValidationSummary = {
+    skippedRows: 0,
+    internalReasons: [],
+  };
 
   for (const [destinationIata, entries] of Object.entries(data)) {
+    if (!getTrimmedString(destinationIata) || !isRecord(entries)) {
+      addValidationReason(validation, `data.${destinationIata}`, "destination_bucket_invalid");
+      continue;
+    }
+
     for (const [index, entry] of Object.entries(entries)) {
+      const validEntry = validateTravelpayoutsEntry({
+        destinationIata,
+        entry,
+        index,
+        summary: validation,
+      });
+
+      if (!validEntry) {
+        continue;
+      }
+
       options.push(
         mapEntryToCashFlightOption({
-          entry,
+          entry: validEntry,
           destinationIata,
           index,
           origin,
@@ -212,7 +313,28 @@ function flattenCheapResponse(
     }
   }
 
-  return options;
+  return { options, validation };
+}
+
+function getValidationMessages(
+  validation: ProviderValidationSummary,
+): ProviderMessage[] {
+  const validationMessage = createValidationWarningMessage({
+    code: "travelpayouts_validation_skipped_rows",
+    providerLabel: TRAVELPAYOUTS_PROVIDER_LABEL,
+    skippedRows: validation.skippedRows,
+    internalReasons: validation.internalReasons,
+  });
+
+  return validationMessage ? [validationMessage] : [];
+}
+
+function mergeValidationSummaries(
+  target: ProviderValidationSummary,
+  source: ProviderValidationSummary,
+): void {
+  target.skippedRows += source.skippedRows;
+  target.internalReasons.push(...source.internalReasons);
 }
 
 function normalizeTravelpayoutsCode(code: string): string {
@@ -322,6 +444,10 @@ export async function searchTravelpayoutsCashFlights(
   }
 
   const routePairs = getTravelpayoutsRoutePairs(search);
+  const aggregateValidation: ProviderValidationSummary = {
+    skippedRows: 0,
+    internalReasons: [],
+  };
 
   if (routePairs.length === 0) {
     return buildEnvelope({
@@ -386,15 +512,23 @@ export async function searchTravelpayoutsCashFlights(
       });
     }
 
-    let payload: TravelpayoutsCheapResponse;
+    let payload: unknown;
 
     try {
-      payload = (await response.json()) as TravelpayoutsCheapResponse;
+      payload = await response.json();
     } catch {
       return buildEnvelope({
         status: "error",
         data: [],
         messages: [requestFailedMessage],
+      });
+    }
+
+    if (!isRecord(payload) || typeof payload.success !== "boolean") {
+      return buildEnvelope({
+        status: "error",
+        data: [],
+        messages: [invalidPayloadMessage],
       });
     }
 
@@ -406,7 +540,21 @@ export async function searchTravelpayoutsCashFlights(
       });
     }
 
-    const options = flattenCheapResponse(payload.data, origin, search);
+    if (!isRecord(payload.data) || !getTravelpayoutsCurrency(payload)) {
+      return buildEnvelope({
+        status: "error",
+        data: [],
+        messages: [invalidPayloadMessage],
+      });
+    }
+
+    const { options, validation } = flattenCheapResponse(
+      payload.data,
+      origin,
+      search,
+    );
+
+    mergeValidationSummaries(aggregateValidation, validation);
 
     if (options.length > 0) {
       // Data is present, but this endpoint is always cache-based, so results are
@@ -419,7 +567,7 @@ export async function searchTravelpayoutsCashFlights(
       return buildEnvelope({
         status: "stale",
         data: options,
-        messages: [staleDataMessage],
+        messages: [staleDataMessage, ...getValidationMessages(aggregateValidation)],
         isStale: true,
       });
     }
@@ -428,7 +576,7 @@ export async function searchTravelpayoutsCashFlights(
   return buildEnvelope({
     status: "no_results",
     data: [],
-    messages: [noResultsMessage],
+    messages: [noResultsMessage, ...getValidationMessages(aggregateValidation)],
   });
 }
 

@@ -15,6 +15,7 @@ export interface ProviderMessage {
   code: string;
   severity: "info" | "warning" | "error";
   message: string;
+  internalReasons?: string[];
 }
 
 export interface ProviderMetadata {

@@ -345,6 +345,150 @@ describe("searchTravelpayoutsCashFlights", () => {
     expect(envelope.metadata.isLive).toBe(true);
   });
 
+  it("skips malformed Travelpayouts rows while preserving valid benchmark cash rows and a safe warning", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          HND: {
+            "0": {
+              price: 812,
+              airline: "NH",
+              flight_number: 6,
+              departure_at: "2027-05-01T10:00:00Z",
+              expires_at: "2026-06-13T00:00:00Z",
+            },
+            "1": {
+              price: -20,
+              airline: "UA",
+              flight_number: 79,
+              departure_at: "2027-05-02T09:00:00Z",
+            },
+            "2": {
+              price: 950,
+              airline: "JL",
+              flight_number: 7,
+              departure_at: "not-a-date",
+            },
+          },
+        },
+      }),
+    );
+
+    const envelope = await searchTravelpayoutsCashFlights(search);
+
+    expect(envelope.status).toBe("stale");
+    expect(envelope.data).toHaveLength(1);
+    expect(envelope.data[0]).toMatchObject({
+      cashPriceUsd: 812,
+      source: "travelpayouts",
+      cabinConfirmed: false,
+      comparison: {
+        isBenchmarkOnly: true,
+        isExactDateComparable: false,
+      },
+    });
+    expect(
+      envelope.messages.find(
+        (message) => message.code === "travelpayouts_validation_skipped_rows",
+      ),
+    ).toMatchObject({
+      severity: "warning",
+      internalReasons: expect.arrayContaining([
+        "data.HND.1:price_invalid",
+        "data.HND.2:departure_date_invalid",
+      ]),
+    });
+    expect(JSON.stringify(envelope.messages)).not.toContain("test-token");
+  });
+
+  it("maps all-invalid Travelpayouts rows to no_results without fabricated cash data", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          HND: {
+            "0": {
+              price: 0,
+              airline: "NH",
+              flight_number: 6,
+              departure_at: "2027-05-01T10:00:00Z",
+            },
+            "1": {
+              price: 950,
+              airline: "",
+              flight_number: undefined,
+              departure_at: "2027-05-02T09:00:00Z",
+            },
+          },
+        },
+      }),
+    );
+
+    const envelope = await searchTravelpayoutsCashFlights(search);
+
+    expect(envelope.status).toBe("no_results");
+    expect(envelope.data).toEqual([]);
+    expect(
+      envelope.messages.find(
+        (message) => message.code === "travelpayouts_validation_skipped_rows",
+      )?.internalReasons,
+    ).toEqual(
+      expect.arrayContaining([
+        "data.HND.0:price_invalid",
+        "data.HND.1:flight_identity_missing",
+      ]),
+    );
+  });
+
+  it("maps an unexpected Travelpayouts top-level payload shape to a provider error", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        results: [],
+      }),
+    );
+
+    const envelope = await searchTravelpayoutsCashFlights(search);
+
+    expect(envelope.status).toBe("error");
+    expect(envelope.data).toEqual([]);
+    expect(envelope.messages).toEqual([
+      {
+        code: "travelpayouts_invalid_payload",
+        severity: "error",
+        message: "Live cash provider returned an unexpected response shape.",
+      },
+    ]);
+  });
+
+  it("rejects unsupported Travelpayouts currency payloads instead of normalizing unsafe cash", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        currency: "eur",
+        data: {
+          HND: {
+            "0": {
+              price: 812,
+              airline: "NH",
+              flight_number: 6,
+              departure_at: "2027-05-01T10:00:00Z",
+            },
+          },
+        },
+      }),
+    );
+
+    const envelope = await searchTravelpayoutsCashFlights(search);
+
+    expect(envelope.status).toBe("error");
+    expect(envelope.data).toEqual([]);
+    expect(envelope.messages[0]).toMatchObject({
+      code: "travelpayouts_invalid_payload",
+    });
+  });
+
   it("maps an empty data object to no_results", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ success: true, data: {} }),

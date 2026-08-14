@@ -2,6 +2,17 @@ import { TRANSFER_PARTNERS } from "@/data/transferPartners";
 import { getCardProgramsForAirline } from "@/lib/transferPartners/lookup";
 import { normalizeLoyaltyProgram } from "@/lib/points/loyaltyPrograms";
 import { createSearchFingerprint } from "@/lib/comparison/searchFingerprint";
+import {
+  addValidationReason,
+  createValidationWarningMessage,
+  getBoolean,
+  getFiniteNumber,
+  getPositiveNumber,
+  getTrimmedString,
+  isRecord,
+  isUsableDateString,
+  type ProviderValidationSummary,
+} from "@/lib/providers/dtoValidation";
 import type {
   AwardFlightProvider,
   ProviderMessage,
@@ -102,13 +113,6 @@ interface SeatsAeroAvailabilityResult {
   FDirect?: boolean;
   Source: string;
   UpdatedAt?: string;
-}
-
-interface SeatsAeroCachedSearchResponse {
-  data: SeatsAeroAvailabilityResult[];
-  count: number;
-  hasMore: boolean;
-  cursor: number;
 }
 
 interface SeatsAeroCabinFields {
@@ -213,6 +217,12 @@ const requestFailedMessage: ProviderMessage = {
   message: "Live award provider request failed.",
 };
 
+const invalidPayloadMessage: ProviderMessage = {
+  code: "seats_aero_invalid_payload",
+  severity: "error",
+  message: "Live award provider returned an unexpected response shape.",
+};
+
 function buildEnvelope({
   status,
   data,
@@ -233,6 +243,223 @@ function buildEnvelope({
     },
     messages,
   };
+}
+
+function getRawCabinAvailability(
+  result: Record<string, unknown>,
+  cabinKey: SeatsAeroCabinKey,
+): boolean | undefined {
+  switch (cabinKey) {
+    case "Y":
+      return getBoolean(result.YAvailable);
+    case "W":
+      return getBoolean(result.WAvailable);
+    case "J":
+      return getBoolean(result.JAvailable);
+    case "F":
+      return getBoolean(result.FAvailable);
+  }
+}
+
+function getRawCabinMileageCost(
+  result: Record<string, unknown>,
+  cabinKey: SeatsAeroCabinKey,
+): string | undefined {
+  const mileageCost = (() => {
+    switch (cabinKey) {
+      case "Y":
+        return result.YMileageCost;
+      case "W":
+        return result.WMileageCost;
+      case "J":
+        return result.JMileageCost;
+      case "F":
+        return result.FMileageCost;
+    }
+  })();
+
+  return getPositiveNumber(mileageCost)?.toString();
+}
+
+function getRawCabinRemainingSeats(
+  result: Record<string, unknown>,
+  cabinKey: SeatsAeroCabinKey,
+): number | undefined {
+  const remainingSeats = (() => {
+    switch (cabinKey) {
+      case "Y":
+        return result.YRemainingSeats;
+      case "W":
+        return result.WRemainingSeats;
+      case "J":
+        return result.JRemainingSeats;
+      case "F":
+        return result.FRemainingSeats;
+    }
+  })();
+  const seats = getFiniteNumber(remainingSeats);
+
+  return seats !== undefined && seats >= 0 ? seats : undefined;
+}
+
+function getRawCabinDirect(
+  result: Record<string, unknown>,
+  cabinKey: SeatsAeroCabinKey,
+): boolean | undefined {
+  switch (cabinKey) {
+    case "Y":
+      return getBoolean(result.YDirect);
+    case "W":
+      return getBoolean(result.WDirect);
+    case "J":
+      return getBoolean(result.JDirect);
+    case "F":
+      return getBoolean(result.FDirect);
+  }
+}
+
+function validateSeatsAeroResult({
+  cabinKey,
+  index,
+  result,
+  summary,
+}: {
+  cabinKey: SeatsAeroCabinKey;
+  index: number;
+  result: unknown;
+  summary: ProviderValidationSummary;
+}): SeatsAeroAvailabilityResult | undefined {
+  const rowPath = `data.${index}`;
+
+  if (!isRecord(result)) {
+    addValidationReason(summary, rowPath, "row_not_object");
+    return undefined;
+  }
+
+  if (!isRecord(result.Route)) {
+    addValidationReason(summary, rowPath, "route_missing");
+    return undefined;
+  }
+
+  const id = getTrimmedString(result.ID);
+  const origin = getTrimmedString(result.Route.OriginAirport);
+  const destination = getTrimmedString(result.Route.DestinationAirport);
+  const routeSource = getTrimmedString(result.Route.Source);
+  const source = getTrimmedString(result.Source) ?? routeSource;
+  const date = getTrimmedString(result.Date);
+  const availability = getRawCabinAvailability(result, cabinKey);
+
+  if (!id) {
+    addValidationReason(summary, rowPath, "id_missing");
+    return undefined;
+  }
+
+  if (!origin || !destination) {
+    addValidationReason(summary, rowPath, "route_airports_missing");
+    return undefined;
+  }
+
+  if (!source) {
+    addValidationReason(summary, rowPath, "program_slug_missing");
+    return undefined;
+  }
+
+  if (!isUsableDateString(date)) {
+    addValidationReason(summary, rowPath, "date_invalid");
+    return undefined;
+  }
+
+  if (availability === undefined) {
+    addValidationReason(summary, rowPath, "availability_flag_invalid");
+    return undefined;
+  }
+
+  const mileageCost = getRawCabinMileageCost(result, cabinKey);
+
+  if (availability && mileageCost === undefined) {
+    addValidationReason(summary, rowPath, "mileage_cost_invalid");
+    return undefined;
+  }
+
+  return {
+    ID: id,
+    Route: {
+      ID: getTrimmedString(result.Route.ID),
+      OriginAirport: origin,
+      DestinationAirport: destination,
+      Source: routeSource ?? source,
+    },
+    Date: date,
+    YAvailable: getBoolean(result.YAvailable) ?? false,
+    WAvailable: getBoolean(result.WAvailable) ?? false,
+    JAvailable: getBoolean(result.JAvailable) ?? false,
+    FAvailable: getBoolean(result.FAvailable) ?? false,
+    YMileageCost: getRawCabinMileageCost(result, "Y"),
+    WMileageCost: getRawCabinMileageCost(result, "W"),
+    JMileageCost: getRawCabinMileageCost(result, "J"),
+    FMileageCost: getRawCabinMileageCost(result, "F"),
+    YRemainingSeats: getRawCabinRemainingSeats(result, "Y"),
+    WRemainingSeats: getRawCabinRemainingSeats(result, "W"),
+    JRemainingSeats: getRawCabinRemainingSeats(result, "J"),
+    FRemainingSeats: getRawCabinRemainingSeats(result, "F"),
+    YDirect: getRawCabinDirect(result, "Y"),
+    WDirect: getRawCabinDirect(result, "W"),
+    JDirect: getRawCabinDirect(result, "J"),
+    FDirect: getRawCabinDirect(result, "F"),
+    Source: source,
+    UpdatedAt: isUsableDateString(result.UpdatedAt)
+      ? result.UpdatedAt
+      : undefined,
+  };
+}
+
+function validateSeatsAeroPayload(
+  payload: unknown,
+  cabinKey: SeatsAeroCabinKey,
+):
+  | {
+      ok: true;
+      results: SeatsAeroAvailabilityResult[];
+      validation: ProviderValidationSummary;
+    }
+  | { ok: false } {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return { ok: false };
+  }
+
+  const validation: ProviderValidationSummary = {
+    skippedRows: 0,
+    internalReasons: [],
+  };
+  const results = payload.data.flatMap((result, index) => {
+    const validResult = validateSeatsAeroResult({
+      cabinKey,
+      index,
+      result,
+      summary: validation,
+    });
+
+    return validResult ? [validResult] : [];
+  });
+
+  return {
+    ok: true,
+    results,
+    validation,
+  };
+}
+
+function getValidationMessages(
+  validation: ProviderValidationSummary,
+): ProviderMessage[] {
+  const validationMessage = createValidationWarningMessage({
+    code: "seats_aero_validation_skipped_rows",
+    providerLabel: SEATS_AERO_PROVIDER_LABEL,
+    skippedRows: validation.skippedRows,
+    internalReasons: validation.internalReasons,
+  });
+
+  return validationMessage ? [validationMessage] : [];
 }
 
 function mapResultCabinToAwardOption({
@@ -479,10 +706,10 @@ export async function searchSeatsAeroAwardFlights(
     });
   }
 
-  let payload: SeatsAeroCachedSearchResponse;
+  let payload: unknown;
 
   try {
-    payload = (await response.json()) as SeatsAeroCachedSearchResponse;
+    payload = await response.json();
   } catch {
     return buildEnvelope({
       status: "error",
@@ -491,13 +718,25 @@ export async function searchSeatsAeroAwardFlights(
     });
   }
 
-  const results = payload.data ?? [];
+  const requestedCabinKey = SEATS_AERO_KEY_BY_CABIN[search.cabin];
+  const validationResult = validateSeatsAeroPayload(payload, requestedCabinKey);
+
+  if (!validationResult.ok) {
+    return buildEnvelope({
+      status: "error",
+      data: [],
+      messages: [invalidPayloadMessage],
+    });
+  }
+
+  const validationMessages = getValidationMessages(validationResult.validation);
+  const results = validationResult.results;
 
   if (results.length === 0) {
     return buildEnvelope({
       status: "no_results",
       data: [],
-      messages: [noResultsMessage],
+      messages: [noResultsMessage, ...validationMessages],
     });
   }
 
@@ -511,14 +750,14 @@ export async function searchSeatsAeroAwardFlights(
     return buildEnvelope({
       status: "no_results",
       data: [],
-      messages: [noResultsMessage],
+      messages: [noResultsMessage, ...validationMessages],
     });
   }
 
   return buildEnvelope({
     status: "success",
     data: options,
-    messages: [successMessage, verifyAvailabilityMessage],
+    messages: [successMessage, verifyAvailabilityMessage, ...validationMessages],
   });
 }
 

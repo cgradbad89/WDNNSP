@@ -331,6 +331,117 @@ describe("searchSeatsAeroAwardFlights", () => {
     expect(envelope.data).toEqual([]);
   });
 
+  it("skips malformed rows while preserving valid Seats.aero rows and a safe warning", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          baseResult({
+            ID: "valid-row",
+            JAvailable: true,
+            JMileageCost: "75000",
+            JDirect: true,
+          }),
+          baseResult({
+            ID: "missing-points",
+            JAvailable: true,
+            JMileageCost: undefined,
+            JDirect: true,
+          }),
+          {
+            ID: "missing-route",
+            Date: "2027-05-01",
+            JAvailable: true,
+            JMileageCost: "90000",
+          },
+        ],
+        count: 3,
+        hasMore: false,
+        cursor: 0,
+      }),
+    );
+
+    const envelope = await searchSeatsAeroAwardFlights(search);
+
+    expect(envelope.status).toBe("success");
+    expect(envelope.data).toHaveLength(1);
+    expect(envelope.data[0]).toMatchObject({
+      id: "seatsaero-valid-row-j",
+      pointsRequired: 150000,
+      availabilityStatus: "available",
+    });
+    expect(envelope.data[0].taxesAndFeesUsd).toBeUndefined();
+    expect(
+      envelope.messages.find(
+        (message) => message.code === "seats_aero_validation_skipped_rows",
+      ),
+    ).toMatchObject({
+      severity: "warning",
+      internalReasons: expect.arrayContaining([
+        "data.1:mileage_cost_invalid",
+        "data.2:route_missing",
+      ]),
+    });
+    expect(JSON.stringify(envelope.messages)).not.toContain("test-key");
+  });
+
+  it("maps all-invalid Seats.aero rows to no_results without fabricated award data", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          baseResult({
+            ID: "invalid-points",
+            JAvailable: true,
+            JMileageCost: "not-a-number",
+          }),
+          baseResult({
+            ID: "invalid-date",
+            Date: "not-a-date",
+            JAvailable: true,
+            JMileageCost: "75000",
+          }),
+        ],
+        count: 2,
+        hasMore: false,
+        cursor: 0,
+      }),
+    );
+
+    const envelope = await searchSeatsAeroAwardFlights(search);
+
+    expect(envelope.status).toBe("no_results");
+    expect(envelope.data).toEqual([]);
+    expect(
+      envelope.messages.find(
+        (message) => message.code === "seats_aero_validation_skipped_rows",
+      )?.internalReasons,
+    ).toEqual(
+      expect.arrayContaining([
+        "data.0:mileage_cost_invalid",
+        "data.1:date_invalid",
+      ]),
+    );
+  });
+
+  it("maps an unexpected Seats.aero top-level payload shape to a provider error", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        results: [baseResult({ JAvailable: true, JMileageCost: "75000" })],
+      }),
+    );
+
+    const envelope = await searchSeatsAeroAwardFlights(search);
+
+    expect(envelope.status).toBe("error");
+    expect(envelope.data).toEqual([]);
+    expect(envelope.messages).toEqual([
+      {
+        code: "seats_aero_invalid_payload",
+        severity: "error",
+        message: "Live award provider returned an unexpected response shape.",
+      },
+    ]);
+  });
+
   it("maps HTTP 401 to error without leaking the API key or response body", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ message: "invalid key test-key" }, 401),
