@@ -4,6 +4,7 @@ import type {
   ProviderLimitation,
   ProviderResultReference,
 } from "./providerResults";
+import type { ComparisonMetadata } from "./comparison";
 import type { FlightItinerary } from "./routes";
 
 export type Cabin = "economy" | "premium_economy" | "business" | "first";
@@ -31,7 +32,7 @@ export interface RouteDetail {
 
 export interface CashFlightOption {
   id: string;
-  source: "duffel" | "amadeus" | "travelpayouts" | "manual" | "mock";
+  source: "duffel" | "travelpayouts" | "manual" | "mock";
   provider?: ProviderResultReference;
   freshness?: FreshnessMetadata;
   airline: string;
@@ -51,6 +52,7 @@ export interface CashFlightOption {
   // provider does not confirm cabin, and `cabin` is only the cabin the user
   // searched for, echoed back - do not present it as confirmed.
   cabinConfirmed?: boolean;
+  comparison?: ComparisonMetadata;
   cashPriceUsd: number;
   price?: PriceMoney;
   priceBreakdown?: {

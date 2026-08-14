@@ -107,6 +107,10 @@ function formatRecommendationLabel(label: RecommendationLabel): string {
     return "Pay Cash Check";
   }
 
+  if (label === "not_comparable") {
+    return "Needs Verification";
+  }
+
   return "Not Enough Points";
 }
 
@@ -117,6 +121,10 @@ function getLabelTone(label: RecommendationLabel): string {
 
   if (label === "not_enough_points") {
     return "bg-[#f9e8df] text-[#8f3b24]";
+  }
+
+  if (label === "not_comparable") {
+    return "bg-[#fff9df] text-[#5d4c1d]";
   }
 
   return "bg-[#edf3ea] text-[#2f6b4f]";
@@ -209,7 +217,7 @@ function getAwardSourceDisclosure(
     {
       label: "CPP confidence",
       value: isCppLimited
-        ? "Limited by mock data or missing taxes/fees"
+        ? "Limited by mock data, missing taxes/fees, or comparability"
         : "Estimated from provider data",
     },
   ];

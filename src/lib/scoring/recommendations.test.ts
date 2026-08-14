@@ -24,6 +24,22 @@ const cashOption: CashFlightOption = {
   cashPriceUsd: 7100,
 };
 
+const search = {
+  id: "search-1",
+  userId: "local-user",
+  name: "Tokyo Spring Trip",
+  originCodes: ["IAD"],
+  destinationCodes: ["HND"],
+  departDate: "2027-05-01",
+  returnDate: "2027-05-10",
+  tripType: "round_trip" as const,
+  passengers: 2,
+  cabin: "business" as const,
+  maxStops: 1,
+  createdAt: "2026-06-06T00:00:00.000Z",
+  updatedAt: "2026-06-06T00:00:00.000Z",
+};
+
 const accounts: PointsAccount[] = [
   {
     id: "account-chase",
@@ -94,6 +110,7 @@ function createAwardOption(
     pointsRequired: 120000,
     taxesAndFeesUsd: 186,
     transferSources: ["Chase"],
+    availabilityStatus: "available",
     stops: 1,
     durationMinutes: 840,
     confidence: "high",
@@ -112,6 +129,41 @@ function getOptionById(
   }
 
   return option;
+}
+
+function createComparableCashOption(
+  overrides: Partial<CashFlightOption> = {},
+): CashFlightOption {
+  return {
+    ...cashOption,
+    comparison: {
+      tripType: "round_trip",
+      passengerCount: 2,
+      cabin: "business",
+      cabinConfirmed: true,
+      isExactDateComparable: true,
+      isBenchmarkOnly: false,
+    },
+    ...overrides,
+  };
+}
+
+function createComparableAwardOption(
+  overrides: Partial<AwardFlightOption> = {},
+): AwardFlightOption {
+  return createAwardOption({
+    sourceProgramId: "air-canada-aeroplan",
+    comparison: {
+      tripType: "round_trip",
+      passengerCount: 2,
+      cabin: "business",
+      cabinConfirmed: true,
+      isExactDateComparable: true,
+      isBenchmarkOnly: false,
+      availabilityStatus: "available",
+    },
+    ...overrides,
+  });
 }
 
 describe("scoreAwardOptions", () => {
@@ -319,6 +371,23 @@ describe("scoreAwardOptions", () => {
 
     expect(idResult.rankedAwardOptions[0].score.pointsFitScore).toBe(100);
     expect(fallbackResult.rankedAwardOptions[0].score.pointsFitScore).toBe(100);
+  });
+
+  it("uses a resolved sourceProgramId for transfer partner scoring", () => {
+    const result = scoreAwardOptions(
+      [
+        createAwardOption({
+          id: "provider-slug",
+          airlineProgram: "aeroplan",
+          sourceProgramId: "air-canada-aeroplan",
+        }),
+      ],
+      cashOption,
+      accounts,
+      transferPartners,
+    );
+
+    expect(result.rankedAwardOptions[0].score.pointsFitScore).toBe(100);
   });
 
   it("has exact balance match sufficiency", () => {
@@ -557,5 +626,203 @@ describe("scoreAwardOptions", () => {
       ).not.toBe("lowest_fees");
     });
   });
-});
 
+  describe("comparison guardrails", () => {
+    it("blocks CPP and Best Overall when cabin differs from the searched cabin", () => {
+      const result = scoreAwardOptions(
+        [
+          createComparableAwardOption({
+            id: "economy-award",
+            cabin: "economy",
+            comparison: {
+              tripType: "round_trip",
+              passengerCount: 2,
+              cabin: "economy",
+              cabinConfirmed: true,
+              isExactDateComparable: true,
+              isBenchmarkOnly: false,
+              availabilityStatus: "available",
+            },
+          }),
+        ],
+        createComparableCashOption(),
+        accounts,
+        transferPartners,
+        search,
+      );
+
+      expect(result.rankedAwardOptions[0].centsPerPoint).toBeUndefined();
+      expect(result.rankedAwardOptions[0].recommendationLabel).toBe(
+        "not_comparable",
+      );
+      expect(result.bestAwardOption).toBeUndefined();
+      expect(result.rankedAwardOptions[0].comparability?.reasons).toContain(
+        "cabin_mismatch",
+      );
+    });
+
+    it("blocks round-trip cash against one-way award comparison", () => {
+      const result = scoreAwardOptions(
+        [
+          createComparableAwardOption({
+            id: "one-way-award",
+            comparison: {
+              tripType: "one_way",
+              passengerCount: 2,
+              cabin: "business",
+              cabinConfirmed: true,
+              isExactDateComparable: true,
+              isBenchmarkOnly: false,
+              availabilityStatus: "available",
+            },
+          }),
+        ],
+        createComparableCashOption(),
+        accounts,
+        transferPartners,
+        search,
+      );
+
+      expect(result.rankedAwardOptions[0].centsPerPoint).toBeUndefined();
+      expect(result.rankedAwardOptions[0].comparability?.reasons).toContain(
+        "trip_type_mismatch",
+      );
+    });
+
+    it("blocks passenger mismatch CPP", () => {
+      const result = scoreAwardOptions(
+        [
+          createComparableAwardOption({
+            id: "wrong-passengers",
+            comparison: {
+              tripType: "round_trip",
+              passengerCount: 1,
+              cabin: "business",
+              cabinConfirmed: true,
+              isExactDateComparable: true,
+              isBenchmarkOnly: false,
+              availabilityStatus: "available",
+            },
+          }),
+        ],
+        createComparableCashOption(),
+        accounts,
+        transferPartners,
+        search,
+      );
+
+      expect(result.rankedAwardOptions[0].centsPerPoint).toBeUndefined();
+      expect(result.rankedAwardOptions[0].comparability?.reasons).toContain(
+        "passenger_mismatch",
+      );
+    });
+
+    it("blocks unknown award fees CPP", () => {
+      const result = scoreAwardOptions(
+        [createComparableAwardOption({ id: "unknown-fees", taxesAndFeesUsd: undefined })],
+        createComparableCashOption(),
+        accounts,
+        transferPartners,
+        search,
+      );
+
+      expect(result.rankedAwardOptions[0].centsPerPoint).toBeUndefined();
+      expect(result.rankedAwardOptions[0].comparability?.reasons).toContain(
+        "unknown_award_fees",
+      );
+    });
+
+    it("does not fabricate a transfer path for an unknown provider program", () => {
+      const result = scoreAwardOptions(
+        [
+          createComparableAwardOption({
+            id: "unknown-program",
+            airlineProgram: "mystery-program",
+            sourceProgramId: undefined,
+          }),
+        ],
+        createComparableCashOption(),
+        accounts,
+        transferPartners,
+        search,
+      );
+
+      expect(result.rankedAwardOptions[0].score.transferSimplicityScore).toBe(0);
+      expect(result.rankedAwardOptions[0].comparability?.reasons).toContain(
+        "unresolved_program",
+      );
+    });
+
+    it("prevents waitlist, unavailable, stale, and unknown awards from becoming Best Overall", () => {
+      const result = scoreAwardOptions(
+        [
+          createComparableAwardOption({
+            id: "waitlist",
+            availabilityStatus: "waitlist",
+          }),
+          createComparableAwardOption({
+            id: "unavailable",
+            availabilityStatus: "unavailable",
+          }),
+          createComparableAwardOption({ id: "stale", availabilityStatus: "stale" }),
+          createComparableAwardOption({
+            id: "unknown",
+            availabilityStatus: "unknown",
+          }),
+        ],
+        createComparableCashOption(),
+        accounts,
+        transferPartners,
+        search,
+      );
+
+      expect(result.bestAwardOption).toBeUndefined();
+      expect(
+        result.rankedAwardOptions.every(
+          (option) => option.recommendationLabel === "not_comparable",
+        ),
+      ).toBe(true);
+    });
+
+    it("blocks benchmark-only cash CPP", () => {
+      const result = scoreAwardOptions(
+        [createComparableAwardOption({ id: "benchmark-blocked" })],
+        createComparableCashOption({
+          source: "travelpayouts",
+          cabinConfirmed: false,
+          comparison: {
+            tripType: "round_trip",
+            passengerCount: 2,
+            cabin: "business",
+            cabinConfirmed: false,
+            isExactDateComparable: false,
+            isBenchmarkOnly: true,
+          },
+        }),
+        accounts,
+        transferPartners,
+        search,
+      );
+
+      expect(result.rankedAwardOptions[0].centsPerPoint).toBeUndefined();
+      expect(result.rankedAwardOptions[0].comparability?.reasons).toContain(
+        "provider_benchmark_only",
+      );
+    });
+
+    it("still calculates CPP for exact comparable mock-style options", () => {
+      const result = scoreAwardOptions(
+        [createComparableAwardOption({ id: "safe-mock" })],
+        createComparableCashOption(),
+        accounts,
+        transferPartners,
+        search,
+      );
+
+      expect(result.rankedAwardOptions[0].centsPerPoint).toBe(5.8);
+      expect(result.rankedAwardOptions[0].recommendationLabel).toBe(
+        "best_overall",
+      );
+    });
+  });
+});

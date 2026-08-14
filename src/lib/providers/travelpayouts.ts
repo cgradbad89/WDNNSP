@@ -1,4 +1,5 @@
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
+import { createSearchFingerprint } from "@/lib/comparison/searchFingerprint";
 import type {
   CashFlightProvider,
   ProviderMessage,
@@ -164,12 +165,27 @@ function mapEntryToCashFlightOption({
     },
     limitations: [
       {
+        code: "provider_benchmark_only",
+        severity: "warning",
+        message:
+          "Travelpayouts cached price data is benchmark-only and should not be used for exact cents-per-point comparison.",
+      },
+      {
         code: "travelpayouts_partial_itinerary",
         severity: "warning",
         message:
           "Travelpayouts cached price data does not confirm arrival time, duration, stop count, or cabin. These fields are shown as not reported rather than guessed.",
       },
     ],
+    comparison: {
+      searchFingerprint: createSearchFingerprint(search),
+      tripType: search.tripType,
+      passengerCount: Math.max(1, search.passengers),
+      cabin: search.cabin,
+      cabinConfirmed: false,
+      isExactDateComparable: false,
+      isBenchmarkOnly: true,
+    },
   };
 }
 

@@ -53,6 +53,10 @@ function formatRecommendationLabel(label: RecommendationLabel): string {
     return "Pay Cash Check";
   }
 
+  if (label === "not_comparable") {
+    return "Needs Verification";
+  }
+
   return "Not Enough Points";
 }
 

@@ -20,7 +20,8 @@ export function applyResultsFilters(
   return options.filter((option) => {
     if (
       filters.bookableWithAnyPoints &&
-      option.recommendationLabel === "not_enough_points"
+      (option.recommendationLabel === "not_enough_points" ||
+        option.recommendationLabel === "not_comparable")
     ) {
       return false;
     }

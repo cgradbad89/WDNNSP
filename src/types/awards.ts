@@ -5,6 +5,7 @@ import type {
   ProviderLimitation,
   ProviderResultReference,
 } from "./providerResults";
+import type { ComparisonMetadata } from "./comparison";
 import type { FlightItinerary } from "./routes";
 
 export type AwardAvailabilityStatus =
@@ -40,6 +41,7 @@ export interface AwardFlightOption {
   transferSources: string[];
   sourceProgramId?: string;
   sourceProgramLabel?: string;
+  comparison?: ComparisonMetadata;
   cashComparableUsd?: number;
   centsPerPoint?: number;
   stops?: number;

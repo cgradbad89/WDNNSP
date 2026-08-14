@@ -74,6 +74,7 @@ describe("searchSeatsAeroAwardFlights", () => {
       true,
     );
     expect(calledUrl).not.toContain("/partnerapi/live");
+    expect(new URL(calledUrl).searchParams.get("cabins")).toBe("J");
   });
 
   it("sends the API key via the Partner-Authorization header, not as a query param or Authorization header", async () => {
@@ -93,7 +94,7 @@ describe("searchSeatsAeroAwardFlights", () => {
     expect(headers.Authorization).toBeUndefined();
   });
 
-  it("expands a result with multiple available cabins into multiple AwardFlightOption entries", async () => {
+  it("enforces the searched cabin after provider normalization", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         data: [
@@ -115,21 +116,44 @@ describe("searchSeatsAeroAwardFlights", () => {
     const envelope = await searchSeatsAeroAwardFlights(search);
 
     expect(envelope.status).toBe("success");
-    expect(envelope.data).toHaveLength(2);
-
-    const economy = envelope.data.find((option) => option.cabin === "economy");
-    const business = envelope.data.find((option) => option.cabin === "business");
-
-    expect(economy).toBeDefined();
-    expect(business).toBeDefined();
-    // pointsRequired is multiplied by passenger count (2 passengers).
-    expect(economy?.pointsRequired).toBe(80000);
-    expect(business?.pointsRequired).toBe(180000);
-    expect(economy?.source).toBe("seats_aero");
-    expect(economy?.id).not.toBe(business?.id);
+    expect(envelope.data).toHaveLength(1);
+    expect(envelope.data[0].cabin).toBe("business");
+    expect(envelope.data[0].pointsRequired).toBe(180000);
+    expect(envelope.data[0].source).toBe("seats_aero");
+    expect(envelope.data[0].comparison).toMatchObject({
+      tripType: "one_way",
+      passengerCount: 2,
+      cabin: "business",
+      cabinConfirmed: true,
+    });
   });
 
-  it("populates transferSources for a result whose Source has known card transfer partners", async () => {
+  it("does not return business awards for an economy search", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          baseResult({
+            JAvailable: true,
+            JMileageCost: "90000",
+            JDirect: true,
+          }),
+        ],
+        count: 1,
+        hasMore: false,
+        cursor: 0,
+      }),
+    );
+
+    const envelope = await searchSeatsAeroAwardFlights({
+      ...search,
+      cabin: "economy",
+    });
+
+    expect(envelope.status).toBe("no_results");
+    expect(envelope.data).toEqual([]);
+  });
+
+  it("normalizes known Seats.aero source slugs before transfer matching", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         data: [
@@ -148,11 +172,13 @@ describe("searchSeatsAeroAwardFlights", () => {
     const envelope = await searchSeatsAeroAwardFlights(search);
 
     expect(envelope.status).toBe("success");
+    expect(envelope.data[0].airlineProgram).toBe("Air Canada Aeroplan");
+    expect(envelope.data[0].sourceProgramId).toBe("air-canada-aeroplan");
     expect(envelope.data[0].transferSources.length).toBeGreaterThan(0);
     expect(envelope.data[0].transferSources).toContain("Chase Ultimate Rewards");
   });
 
-  it("leaves transferSources empty for a result whose Source has no known card transfer partners", async () => {
+  it("leaves unknown program slugs unresolved and without transfer sources", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         data: [
@@ -177,7 +203,14 @@ describe("searchSeatsAeroAwardFlights", () => {
     const envelope = await searchSeatsAeroAwardFlights(search);
 
     expect(envelope.status).toBe("success");
+    expect(envelope.data[0].airlineProgram).toBe("delta");
+    expect(envelope.data[0].sourceProgramId).toBeUndefined();
     expect(envelope.data[0].transferSources).toEqual([]);
+    expect(
+      envelope.data[0].limitations?.some(
+        (limitation) => limitation.code === "unresolved_program",
+      ),
+    ).toBe(true);
   });
 
   it("maps a result with only one available cabin to a single AwardFlightOption", async () => {

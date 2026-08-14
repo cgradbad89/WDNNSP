@@ -289,7 +289,7 @@ Cash flight result fields:
 ```ts
 type CashFlightOption = {
   id: string;
-  source: "duffel" | "amadeus" | "travelpayouts" | "manual" | "mock";
+  source: "duffel" | "travelpayouts" | "manual" | "mock";
   provider?: ProviderResultReference;
   freshness?: FreshnessMetadata;
   airline: string;
@@ -308,6 +308,7 @@ type CashFlightOption = {
   // a provider that doesn't confirm cabin - not a confirmed fare
   // attribute. True/omitted: provider-confirmed.
   cabinConfirmed?: boolean;
+  comparison?: ComparisonMetadata;
   cashPriceUsd: number;
   price?: PriceMoney;
   priceBreakdown?: {
@@ -333,7 +334,10 @@ As of the August 13, 2026 unreported-fields session, `arrivalDateTime`,
 when a provider genuinely does not report them - never fabricated as a
 placeholder value. `cabinConfirmed: false` marks `cabin` as the user's
 searched cabin echoed back rather than a provider-confirmed fare attribute
-(currently set by `src/lib/providers/travelpayouts.ts`; see 7.3).
+(currently set by `src/lib/providers/travelpayouts.ts`; see 7.3). As of
+Phase 1A, cash options may also carry optional comparison metadata with the
+search fingerprint, trip type, passenger count, cabin confirmation, and
+benchmark/exact-date flags.
 
 ---
 
@@ -380,6 +384,7 @@ type AwardFlightOption = {
   transferSources: string[];
   sourceProgramId?: string;
   sourceProgramLabel?: string;
+  comparison?: ComparisonMetadata;
   cashComparableUsd?: number;
   centsPerPoint?: number;
   stops?: number;
@@ -404,6 +409,12 @@ As of the August 13, 2026 unreported-fields session, `taxesAndFeesUsd`,
 provider genuinely does not report them - never fabricated as a placeholder
 (this had previously let unreported fields score as the best case; see 5.8
 and 15).
+
+As of Phase 1A, live/provider award program slugs must be normalized through
+WDNNSP canonical loyalty-program identity before scoring or transfer matching.
+Provider-owned slugs such as `aeroplan` are preserved for reference but must
+not be treated as durable internal IDs. Unresolved program slugs leave
+`sourceProgramId` undefined and are not fully comparable/scoreable.
 
 ---
 
@@ -480,6 +491,15 @@ confirmed low/nonstop. `src/lib/results/sorting.ts`'s "lowest taxes/fees"
 sort places unreported-fee options last, matching its existing
 unknown-duration-sorts-last behavior.
 
+As of Phase 1A, CPP and positive recommendation labels require a comparable
+cash/award basis when a cash result is available. The comparison gate blocks
+CPP and labels such as Best Overall/Best Value/Lowest Fees when trip type,
+date, passenger count, searched cabin, award fees, cash price, award points,
+program identity, availability, or provider exactness is unsafe. Travelpayouts
+cash is marked benchmark-only unless a future implementation can prove exact
+comparability. Stale, unavailable, waitlist, and unknown award availability
+are not eligible for Best Overall.
+
 ---
 
 #### 5.9 Results Page
@@ -543,9 +563,9 @@ Results provider UX states:
   details instead of a full prominent transfer-warning banner.
 - Live Travelpayouts cash and live Seats.aero award data are available behind
   `ENABLE_LIVE_CASH_PROVIDER`/`ENABLE_LIVE_AWARD_PROVIDER` env flags (see 7.3,
-  7.4); the app falls back to mock data silently when a flag or key is
-  missing. Live Amadeus, Duffel, and Seats.aero Live Search/Bulk Availability
-  remain deferred.
+  7.4). Requested-but-unready cash providers return explicit unavailable
+  envelopes instead of mock cash. Future structured cash providers, Duffel, and
+  Seats.aero Live Search/Bulk Availability remain deferred.
 
 Results page layout, as of the August 12, 2026 results-page redesign session:
 
@@ -702,7 +722,6 @@ minimum-traffic gate on the Data API endpoints used here.
 Other potential providers:
 
 - Duffel
-- Amadeus
 - Other flight API providers
 
 The app should abstract the provider behind a service layer so the provider can be swapped later.
@@ -712,12 +731,14 @@ instead of raw arrays. The envelope carries `status`, `data`, provider
 metadata, and messages.
 
 The browser calls the app-owned `POST /api/search/flights` route for flight
-search results. That route selects the cash provider server-side: when
-`ENABLE_LIVE_CASH_PROVIDER === "true"` and `TRAVELPAYOUTS_TOKEN` is set, it
-uses the live `src/lib/providers/travelpayouts.ts` client; otherwise it falls
-back silently to the mock cash provider. The award provider is selected the
-same way — see 7.4. This keeps provider secrets and raw provider payloads out
-of the browser.
+search results. That route selects the cash provider server-side. The current
+priority is: future structured cash provider slot, then Travelpayouts when
+`ENABLE_LIVE_CASH_PROVIDER === "true"` and `TRAVELPAYOUTS_TOKEN` is set, then
+an explicit no-cash-provider envelope in production. Mock cash remains
+available for local/test use only. Requested-but-unready cash providers return
+explicit live-provider error envelopes instead of silently falling back to mock
+cash. The award provider is selected the same way as before — see 7.4. This
+keeps provider secrets and raw provider payloads out of the browser.
 
 **Travelpayouts client (`src/lib/providers/travelpayouts.ts`):**
 
@@ -739,8 +760,10 @@ of the browser.
   `travelpayouts_partial_itinerary` limitation. `cabin` is still set to the
   requested search cabin (the shared type requires a value), but
   `cabinConfirmed: false` marks it as an echoed-back search input, not a
-  confirmed fare attribute - the Results UI must not present it as
-  confirmed.
+  confirmed fare attribute - the Results UI must not present it as confirmed.
+  Phase 1A also marks Travelpayouts results as benchmark-only for comparison,
+  so they do not produce exact CPP unless a future implementation proves
+  exact comparability.
 - Status mapping: a successful response with at least one result maps to
   `status: "stale"` (not `"success"`) because this endpoint is always
   cache-based — consistent with the existing `"stale"` convention in
@@ -751,13 +774,15 @@ of the browser.
   `"rate_limited"`. Any other network/5xx failure maps to `"error"`.
 - Env vars: `TRAVELPAYOUTS_TOKEN` (server-only, never `NEXT_PUBLIC_`) and
   `ENABLE_LIVE_CASH_PROVIDER` (`"true"`/`"false"`), documented with empty
-  placeholders in `.env.example`.
+  placeholders in `.env.example`. When Travelpayouts is requested but the
+  token is missing, the route returns an explicit unavailable live-provider
+  envelope instead of mock cash.
 
 Cash result objects also include optional real-provider-ready metadata:
 provider references, ISO-like money values, freshness, itinerary, fare, baggage,
 and limitation fields. Existing scoring still uses `cashPriceUsd`.
 
-`CashFlightOption.source` is `"duffel" | "amadeus" | "travelpayouts" | "manual" | "mock"`.
+`CashFlightOption.source` is `"duffel" | "travelpayouts" | "manual" | "mock"`.
 
 ---
 
@@ -797,10 +822,12 @@ provider responses stay server-only and are never sent to the browser.
   prefix) — confirmed against live docs, not the standard
   `Authorization: Bearer` header.
 - One Seats.aero result can report availability in up to four cabins
-  (`YAvailable`/`WAvailable`/`JAvailable`/`FAvailable`) at once. Each
-  available cabin is mapped to its own separate `AwardFlightOption` with that
-  cabin's own `YMileageCost`/etc. mileage cost (multiplied by passenger
-  count) — never collapsed to a single cabin.
+  (`YAvailable`/`WAvailable`/`JAvailable`/`FAvailable`) at once. Phase 1A sends
+  the requested cabin via the `cabins` query param when using Cached Search
+  and then enforces that same cabin again after provider normalization. A
+  business search must not surface economy awards, and an economy search must
+  not surface business awards unless a future product rule explicitly allows
+  cabin substitution.
 - Seats.aero Cached Search reports date-level availability, not scheduled
   flight times, taxes/fees, or exact stop counts (only a per-cabin nonstop
   boolean). Mapped `AwardFlightOption` results still set `departureDateTime`/
@@ -814,21 +841,11 @@ provider responses stay server-only and are never sent to the browser.
   unknown, not the best case. `stops` is a real reported `0` only when the
   per-cabin direct flag confirms nonstop; otherwise it is left `undefined`
   (not a fabricated `0`), flagged via limitations when unconfirmed.
-- `transferSources` is now populated for live Seats.aero results. Each
-  result's `Source` mileage-program slug (e.g. `"aeroplan"`) is mapped via
-  `src/data/seatsAeroSourceMap.ts` to the airline program name used as
-  `TransferPartner.toProgram` in `data/transferPartners.ts`, then resolved
-  to the matching card programs with `getCardProgramsForAirline` (the
-  reverse of `getTransferPartnersForProgram`) in
-  `src/lib/transferPartners/lookup.ts`. Sources with no mapped program, or
-  programs with no known card transfer partners in the wallet's data (e.g.
-  Delta SkyMiles, United's regional partners not carried by any card), still
-  resolve to `[]` rather than erroring — this is expected for programs the
-  static transfer-partner table doesn't cover, not a bug. The Seats.aero ->
-  program slug list was confirmed against the live developer docs during
-  this session; see the header comment in `seatsAeroSourceMap.ts` for slugs
-  that differ from earlier assumptions (Copa is `connectmiles`, GOL is
-  `smiles`, SAS is `eurobonus`, Virgin Australia is `velocity`).
+- `transferSources` is populated only after a provider program slug is
+  normalized to a canonical WDNNSP program ID. Known Seats.aero slugs such as
+  `aeroplan` map to durable IDs such as `air-canada-aeroplan`; unknown slugs
+  preserve the raw provider value, leave `sourceProgramId` undefined, and do
+  not fabricate transfer paths or full comparability.
 - Status mapping: any available cabin found maps to `status: "success"`
   (this session's live Cached Search response has no per-result freshness
   field equivalent to a documented "computed last seen" timestamp — only a
@@ -1415,9 +1432,12 @@ Current implementation status as of August 11, 2026:
   provider orchestration directly. A live Travelpayouts cash provider
   (`src/lib/providers/travelpayouts.ts`) is now implemented and wired into
   `POST /api/search/flights` behind the `ENABLE_LIVE_CASH_PROVIDER` +
-  `TRAVELPAYOUTS_TOKEN` env-var toggle, with a silent mock-data fallback when
-  either is unset. See section 7.3 for the field-mapping and status-mapping
-  details.
+  `TRAVELPAYOUTS_TOKEN` env-var toggle. The route preserves a generic future
+  structured cash provider slot, then falls back to Travelpayouts, then returns
+  no cash result in production when no cash provider is configured. Mock cash
+  remains local/test-only. Requested cash providers no longer fall back
+  silently to mock when credentials are incomplete. See section 7.3 for the
+  field-mapping and status-mapping details.
 - Covered by unit tests: mock cash provider envelope output, provider status
   combination, provider-exception envelope handling, mock cash option metadata,
   cash benchmark use in cents-per-point calculations through the scoring
@@ -1428,7 +1448,7 @@ Current implementation status as of August 11, 2026:
   success-vs-stale status decision, no-results/401/403/429/network-failure
   status mapping, and the route's mock-vs-live provider selection for both
   toggle states.
-- Remaining: multiple cash options, manual cash entry, Amadeus-style live
+- Remaining: multiple cash options, manual cash entry, future structured cash
   provider integration, production freshness scoring, and Results UI
   adjustments for live-provider itinerary fields Travelpayouts does not supply
   (arrival time, duration, stop count, cabin).

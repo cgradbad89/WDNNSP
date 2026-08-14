@@ -125,13 +125,15 @@ function formatEditableCodes(codes: string[]): string {
 function getDirectProgramBalance(
   accounts: PointsAccount[],
   airlineProgram: string,
+  airlineProgramId?: string,
 ): number {
   return accounts
     .filter(
       (account) =>
         account.programType === "airline" &&
-        account.programName.trim().toLowerCase() ===
-          airlineProgram.trim().toLowerCase(),
+        (account.programId === airlineProgramId ||
+          account.programName.trim().toLowerCase() ===
+            airlineProgram.trim().toLowerCase()),
     )
     .reduce((total, account) => total + account.balance, 0);
 }
@@ -303,14 +305,15 @@ export function ResultsPageClient(): JSX.Element {
         cashOption,
         accounts,
         TRANSFER_PARTNERS,
+        selectedSearch,
       ),
-    [accounts, awardOptions, cashOption],
+    [accounts, awardOptions, cashOption, selectedSearch],
   );
   const transferPathsByOptionId = useMemo(() => {
     const entries = recommendationResults.rankedAwardOptions.map((option) => [
       option.id,
       getTransferPathDisplays(
-        option.airlineProgram,
+        option.sourceProgramId ?? option.airlineProgram,
         option.pointsRequired,
         accounts,
         TRANSFER_PARTNERS,
@@ -367,6 +370,7 @@ export function ResultsPageClient(): JSX.Element {
         directBalance: getDirectProgramBalance(
           accounts,
           option.airlineProgram,
+          option.sourceProgramId,
         ),
         option,
         transferPaths: transferPathsByOptionId.get(option.id) ?? [],

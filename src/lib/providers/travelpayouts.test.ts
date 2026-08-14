@@ -284,6 +284,42 @@ describe("searchTravelpayoutsCashFlights", () => {
     expect(first.cabinConfirmed).toBe(false);
   });
 
+  it("marks successful Travelpayouts fares as benchmark-only for comparison", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          HND: {
+            "0": {
+              price: 812,
+              airline: "NH",
+              flight_number: 6,
+              departure_at: "2027-05-01T10:00:00Z",
+              expires_at: "2026-06-13T00:00:00Z",
+            },
+          },
+        },
+      }),
+    );
+
+    const envelope = await searchTravelpayoutsCashFlights(search);
+    const [first] = envelope.data;
+
+    expect(first.comparison).toMatchObject({
+      tripType: "round_trip",
+      passengerCount: 2,
+      cabin: "business",
+      cabinConfirmed: false,
+      isExactDateComparable: false,
+      isBenchmarkOnly: true,
+    });
+    expect(
+      first.limitations?.some(
+        (limitation) => limitation.code === "provider_benchmark_only",
+      ),
+    ).toBe(true);
+  });
+
   it("marks a successful response with usable data as stale, not success", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({

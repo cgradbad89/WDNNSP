@@ -90,9 +90,27 @@ vi.mock("@/lib/search/useSearchData", () => ({
 function createAwardOption(
   overrides: Partial<AwardFlightOption> & Pick<AwardFlightOption, "id">,
 ): AwardFlightOption {
+  const airlineProgram = overrides.airlineProgram ?? "Air Canada Aeroplan";
+  const sourceProgramIds: Record<string, string> = {
+    "Air Canada Aeroplan": "air-canada-aeroplan",
+    "Air France-KLM Flying Blue": "air-france-klm-flying-blue",
+    "United MileagePlus": "united-mileageplus",
+  };
+  const comparison = {
+    tripType: activeSearch.tripType,
+    passengerCount: activeSearch.passengers,
+    cabin: activeSearch.cabin,
+    cabinConfirmed: true,
+    isExactDateComparable: true,
+    isBenchmarkOnly: false,
+    availabilityStatus: "available" as const,
+    ...overrides.comparison,
+  };
+
   return {
     source: "mock",
-    airlineProgram: "Air Canada Aeroplan",
+    airlineProgram,
+    sourceProgramId: sourceProgramIds[airlineProgram],
     origin: "IAD",
     destination: "NRT",
     departureDateTime: "2027-05-01T09:00:00-04:00",
@@ -104,7 +122,9 @@ function createAwardOption(
     stops: 1,
     durationMinutes: 730,
     confidence: "medium",
+    availabilityStatus: "available",
     ...overrides,
+    comparison,
   };
 }
 
@@ -120,7 +140,16 @@ const cashOption: CashFlightOption = {
   durationMinutes: 0,
   stops: 0,
   cabin: "business",
+  cabinConfirmed: true,
   cashPriceUsd: 4800,
+  comparison: {
+    tripType: activeSearch.tripType,
+    passengerCount: activeSearch.passengers,
+    cabin: activeSearch.cabin,
+    cabinConfirmed: true,
+    isExactDateComparable: true,
+    isBenchmarkOnly: false,
+  },
 };
 
 const heroOption = createAwardOption({
@@ -302,7 +331,7 @@ describe("ResultsPageClient hero card and compact rows", () => {
     expect(obscureRow).not.toBeNull();
     expect(within(aeroplanRow as HTMLElement).getByText("Transfer required")).toBeInTheDocument();
     expect(
-      within(obscureRow as HTMLElement).getByText("Not Enough Points"),
+      within(obscureRow as HTMLElement).getByText("Needs Verification"),
     ).toBeInTheDocument();
     expect(
       within(obscureRow as HTMLElement).queryByText("Transfer required"),
@@ -652,7 +681,9 @@ describe("ResultsPageClient live-vs-mock provider labels", () => {
     expect(within(disclosure).getByText("Mock Award Provider")).toBeInTheDocument();
     expect(within(disclosure).getByText("Live award availability")).toBeInTheDocument();
     expect(
-      within(disclosure).getByText("Limited by mock data or missing taxes/fees"),
+      within(disclosure).getByText(
+        "Limited by mock data, missing taxes/fees, or comparability",
+      ),
     ).toBeInTheDocument();
   });
 });

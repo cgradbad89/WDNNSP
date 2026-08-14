@@ -1,6 +1,7 @@
 import { TRANSFER_PARTNERS } from "@/data/transferPartners";
-import { SEATS_AERO_SOURCE_MAP } from "@/data/seatsAeroSourceMap";
 import { getCardProgramsForAirline } from "@/lib/transferPartners/lookup";
+import { normalizeLoyaltyProgram } from "@/lib/points/loyaltyPrograms";
+import { createSearchFingerprint } from "@/lib/comparison/searchFingerprint";
 import type {
   AwardFlightProvider,
   ProviderMessage,
@@ -36,20 +37,13 @@ const SEATS_AERO_PROVIDER_ID = "seats-aero";
 const SEATS_AERO_PROVIDER_LABEL = "Seats.aero";
 const SEATS_AERO_CACHED_SEARCH_URL = "https://seats.aero/partnerapi/search";
 
-// Looks up the card programs (e.g. "Chase Ultimate Rewards") that can
-// transfer into the given Seats.aero mileage-program source slug (e.g.
-// "aeroplan"), via SEATS_AERO_SOURCE_MAP -> TRANSFER_PARTNERS. Slugs with no
-// mapped program, or programs with no known card transfer partners, resolve
-// to an empty array rather than throwing.
-function getTransferSourcesForSeatsAeroSource(sourceSlug: string): string[] {
-  const airlineProgram = SEATS_AERO_SOURCE_MAP[sourceSlug];
-
-  if (!airlineProgram) {
+function getTransferSourcesForProgramId(programId: string | undefined): string[] {
+  if (!programId) {
     return [];
   }
 
   const cardPartners = getCardProgramsForAirline(
-    airlineProgram,
+    programId,
     TRANSFER_PARTNERS,
   );
 
@@ -63,6 +57,13 @@ const CABIN_BY_SEATS_AERO_KEY: Record<SeatsAeroCabinKey, Cabin> = {
   W: "premium_economy",
   J: "business",
   F: "first",
+};
+
+const SEATS_AERO_KEY_BY_CABIN: Record<Cabin, SeatsAeroCabinKey> = {
+  economy: "Y",
+  premium_economy: "W",
+  business: "J",
+  first: "F",
 };
 
 const SEATS_AERO_CABIN_KEYS: SeatsAeroCabinKey[] = ["Y", "W", "J", "F"];
@@ -238,11 +239,13 @@ function mapResultCabinToAwardOption({
   result,
   cabinKey,
   passengers,
+  search,
   searchedAt,
 }: {
   result: SeatsAeroAvailabilityResult;
   cabinKey: SeatsAeroCabinKey;
   passengers: number;
+  search: SavedSearch;
   searchedAt: string;
 }): AwardFlightOption | null {
   const cabinFields = getCabinFields(result, cabinKey);
@@ -256,8 +259,34 @@ function mapResultCabinToAwardOption({
 
   const isDirect = cabinFields.direct === true;
   const remainingSeats = cabinFields.remainingSeats;
-  const airlineProgram = result.Route.Source || result.Source;
+  const rawProgram = result.Route.Source || result.Source;
+  const programNormalization = normalizeLoyaltyProgram({
+    provider: SEATS_AERO_PROVIDER_ID,
+    rawProgramId: rawProgram,
+    rawProgramName: rawProgram,
+  });
+  const airlineProgram = programNormalization.displayName ?? rawProgram;
   const departureDateTime = `${result.Date}T00:00:00Z`;
+  const limitations = isDirect
+    ? [seatsAeroVerifyLimitation]
+    : [
+        seatsAeroVerifyLimitation,
+        {
+          code: "seats_aero_stop_count_unconfirmed",
+          severity: "info" as const,
+          message:
+            "Seats.aero only flags whether a nonstop option exists in this cabin; the exact stop count for connecting itineraries is not confirmed.",
+        },
+      ];
+
+  if (!programNormalization.isResolved) {
+    limitations.push({
+      code: "unresolved_program",
+      severity: "warning",
+      message:
+        "Seats.aero returned a mileage-program slug WDNNSP cannot map to a canonical loyalty program, so transfer matching and value comparison are limited.",
+    });
+  }
 
   return {
     id: `seatsaero-${result.ID}-${cabinKey.toLowerCase()}`,
@@ -295,43 +324,48 @@ function mapResultCabinToAwardOption({
     // confirmed, matching this repo's "unreported means undefined"
     // convention (see src/lib/providers/travelpayouts.ts). Flagged via
     // `limitations` when unconfirmed.
-    // Seats.aero reports the mileage program via `Source` (e.g. "aeroplan"),
-    // mapped through SEATS_AERO_SOURCE_MAP to the card-transferable program
-    // name and looked up against data/transferPartners.ts. Resolves to []
-    // when the source has no mapped program, or the program has no known
-    // card transfer partners.
-    transferSources: getTransferSourcesForSeatsAeroSource(result.Source),
-    sourceProgramId: airlineProgram,
-    sourceProgramLabel: airlineProgram,
     // Cached Search has no confidence/quality signal of its own. A uniform
     // hardcoded "medium" for every result would be exactly the kind of
     // fabricated plausible-looking default this field must avoid, so
     // confidence is left undefined (genuinely unknown) rather than guessed.
     availabilityStatus: "available",
     ...(typeof remainingSeats === "number" ? { availableSeats: remainingSeats } : {}),
-    limitations: isDirect
-      ? [seatsAeroVerifyLimitation]
-      : [
-          seatsAeroVerifyLimitation,
-          {
-            code: "seats_aero_stop_count_unconfirmed",
-            severity: "info",
-            message:
-              "Seats.aero only flags whether a nonstop option exists in this cabin; the exact stop count for connecting itineraries is not confirmed.",
-          },
-        ],
+    transferSources: getTransferSourcesForProgramId(
+      programNormalization.programId,
+    ),
+    ...(programNormalization.programId
+      ? { sourceProgramId: programNormalization.programId }
+      : {}),
+    sourceProgramLabel: airlineProgram,
+    comparison: {
+      searchFingerprint: createSearchFingerprint(search),
+      tripType: search.tripType === "round_trip" ? "one_way" : search.tripType,
+      passengerCount: passengers,
+      cabin: CABIN_BY_SEATS_AERO_KEY[cabinKey],
+      cabinConfirmed: true,
+      isExactDateComparable: true,
+      isBenchmarkOnly: false,
+      availabilityStatus: "available",
+    },
+    limitations,
     lastCheckedAt: result.UpdatedAt ?? searchedAt,
   };
 }
 
 function mapResultToAwardOptions(
   result: SeatsAeroAvailabilityResult,
+  search: SavedSearch,
   passengers: number,
   searchedAt: string,
 ): AwardFlightOption[] {
   const options: AwardFlightOption[] = [];
+  const requestedCabinKey = SEATS_AERO_KEY_BY_CABIN[search.cabin];
 
   for (const cabinKey of SEATS_AERO_CABIN_KEYS) {
+    if (cabinKey !== requestedCabinKey) {
+      continue;
+    }
+
     const isAvailable = getCabinFields(result, cabinKey).available === true;
 
     if (!isAvailable) {
@@ -342,10 +376,11 @@ function mapResultToAwardOptions(
       result,
       cabinKey,
       passengers,
+      search,
       searchedAt,
     });
 
-    if (option) {
+    if (option && option.cabin === search.cabin) {
       options.push(option);
     }
   }
@@ -382,6 +417,7 @@ export async function searchSeatsAeroAwardFlights(
     destination_airport: destination,
     start_date: search.departDate,
     end_date: search.departDate,
+    cabins: SEATS_AERO_KEY_BY_CABIN[search.cabin],
   });
 
   if (search.maxStops === 0) {
@@ -468,7 +504,7 @@ export async function searchSeatsAeroAwardFlights(
   const passengers = Math.max(1, search.passengers);
   const searchedAt = new Date().toISOString();
   const options = results.flatMap((result) =>
-    mapResultToAwardOptions(result, passengers, searchedAt),
+    mapResultToAwardOptions(result, search, passengers, searchedAt),
   );
 
   if (options.length === 0) {

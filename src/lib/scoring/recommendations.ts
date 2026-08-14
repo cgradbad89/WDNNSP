@@ -1,8 +1,18 @@
 import type { AwardFlightOption } from "@/types/awards";
+import type {
+  ComparabilityReason,
+  ComparabilityResult,
+} from "@/types/comparison";
 import type { CashFlightOption } from "@/types/flights";
 import type { PointsAccount } from "@/types/points";
 import type { RecommendationScore } from "@/types/scoring";
+import type { SavedSearch } from "@/types/search";
 import type { TransferPartner } from "@/types/transferPartners";
+import {
+  getCashAwardComparability,
+  isEligibleForBookableRecommendation,
+} from "@/lib/comparison/comparability";
+import { normalizeLoyaltyProgram } from "@/lib/points/loyaltyPrograms";
 import { calculateCentsPerPoint } from "@/lib/scoring/cpp";
 
 export type RecommendationLabel =
@@ -10,11 +20,13 @@ export type RecommendationLabel =
   | "best_value"
   | "lowest_fees"
   | "cash_check"
+  | "not_comparable"
   | "not_enough_points";
 
 export interface ScoredAwardOption extends AwardFlightOption {
   recommendationLabel: RecommendationLabel;
   score: RecommendationScore;
+  comparability?: ComparabilityResult;
   sufficientTransferPathCount?: number;
 }
 
@@ -45,6 +57,11 @@ type PointsFit = {
   hasTransferPath: boolean;
   pointsFitScore: number;
   transferSimplicityScore: number;
+};
+
+type AwardProgramIdentity = {
+  programId?: string;
+  programName: string;
 };
 
 const SCORE_WEIGHTS = {
@@ -99,13 +116,33 @@ function getProgramBalance(
   );
 }
 
+function getAwardProgramIdentity(
+  awardOption: AwardFlightOption,
+): AwardProgramIdentity {
+  const normalization = normalizeLoyaltyProgram({
+    provider: awardOption.provider?.providerId ?? awardOption.source,
+    rawProgramId: awardOption.sourceProgramId,
+    rawProgramName: awardOption.airlineProgram,
+  });
+
+  return {
+    programId: normalization.programId,
+    programName: normalization.displayName ?? awardOption.airlineProgram,
+  };
+}
+
 function matchesAwardProgram(
   partner: TransferPartner,
-  awardProgram: string,
+  awardProgram: AwardProgramIdentity,
 ): boolean {
+  if (!awardProgram.programId) {
+    return false;
+  }
+
   return (
-    partner.toProgramId === awardProgram ||
-    normalizeProgramName(partner.toProgram) === normalizeProgramName(awardProgram)
+    partner.toProgramId === awardProgram.programId ||
+    normalizeProgramName(partner.toProgram) ===
+      normalizeProgramName(awardProgram.programName)
   );
 }
 
@@ -167,12 +204,10 @@ function getTransferBalances(
   transferPartners: TransferPartner[],
 ): TransferBalance[] {
   const transferBalances = new Map<string, TransferBalance>();
+  const awardProgram = getAwardProgramIdentity(awardOption);
 
   for (const partner of transferPartners) {
-    if (
-      !partner.isActive ||
-      !matchesAwardProgram(partner, awardOption.airlineProgram)
-    ) {
+    if (!partner.isActive || !matchesAwardProgram(partner, awardProgram)) {
       continue;
     }
 
@@ -208,10 +243,11 @@ function getPointsFit(
 ): PointsFit {
   const airlineBalances = createProgramBalanceMap(accounts, "airline");
   const flexibleBalances = createProgramBalanceMap(accounts, "credit_card");
+  const awardProgram = getAwardProgramIdentity(awardOption);
   const directBalance = getProgramBalance(
     airlineBalances,
-    awardOption.airlineProgram,
-    awardOption.airlineProgram,
+    awardProgram.programId ?? awardOption.airlineProgram,
+    awardProgram.programName,
   );
   const transferBalances = getTransferBalances(
     awardOption,
@@ -225,7 +261,7 @@ function getPointsFit(
   );
   const totalReachableBalance = transferBalances.reduce(
     (sum, balance) => sum + balance.convertedBalance,
-    directBalance
+    directBalance,
   );
   const bestReachableBalance = Math.max(
     directBalance,
@@ -294,6 +330,7 @@ function buildScoreExplanation(
 function buildScoreWarnings(
   awardOption: AwardFlightOption,
   pointsFit: PointsFit,
+  comparability: ComparabilityResult | undefined,
 ): string[] {
   const warnings: string[] = [];
 
@@ -319,13 +356,47 @@ function buildScoreWarnings(
     );
   }
 
+  if (!isEligibleForBookableRecommendation(awardOption)) {
+    warnings.push(
+      "Award availability is not confirmed as bookable, so this option is not eligible for Best Overall.",
+    );
+  }
+
+  if (comparability?.status === "not_comparable") {
+    warnings.push(
+      `CPP and recommendation claims are blocked: ${formatComparabilityReasons(
+        comparability.reasons,
+      )}.`,
+    );
+  }
+
   return warnings;
+}
+
+function formatComparabilityReasons(reasons: ComparabilityReason[]): string {
+  const labels: Record<ComparabilityReason, string> = {
+    trip_type_mismatch: "trip type mismatch",
+    date_mismatch: "date mismatch",
+    return_date_missing: "return date missing",
+    passenger_mismatch: "passenger mismatch",
+    cabin_mismatch: "cabin mismatch",
+    unknown_award_fees: "award fees not reported",
+    missing_cash_price: "cash price missing",
+    missing_award_points: "award points missing",
+    unresolved_program: "loyalty program unresolved",
+    availability_not_bookable: "availability not bookable",
+    provider_benchmark_only: "provider result is benchmark-only",
+    unknown_itinerary_relationship: "itinerary relationship unknown",
+  };
+
+  return reasons.map((reason) => labels[reason]).join(", ");
 }
 
 function buildRecommendationScore(
   awardOption: AwardFlightOption,
   centsPerPoint: number,
   pointsFit: PointsFit,
+  comparability: ComparabilityResult | undefined,
 ): RecommendationScore {
   const valueScore = getValueScore(centsPerPoint);
   const convenienceScore = getConvenienceScore(awardOption.stops);
@@ -351,25 +422,30 @@ function buildRecommendationScore(
     transferSimplicityScore: pointsFit.transferSimplicityScore,
     totalScore,
     explanation: buildScoreExplanation(awardOption, centsPerPoint, pointsFit),
-    warnings: buildScoreWarnings(awardOption, pointsFit),
+    warnings: buildScoreWarnings(awardOption, pointsFit, comparability),
   };
 }
 
 function assignRecommendationLabels(
   rankedAwardOptions: Array<
-    Omit<ScoredAwardOption, "recommendationLabel"> & { hasEnoughPoints: boolean }
+    Omit<ScoredAwardOption, "recommendationLabel"> & {
+      hasEnoughPoints: boolean;
+      isComparableForRecommendation: boolean;
+    }
   >,
 ): ScoredAwardOption[] {
   const labels = new Map<string, RecommendationLabel>();
 
   for (const option of rankedAwardOptions) {
-    if (!option.hasEnoughPoints) {
+    if (!option.isComparableForRecommendation) {
+      labels.set(option.id, "not_comparable");
+    } else if (!option.hasEnoughPoints) {
       labels.set(option.id, "not_enough_points");
     }
   }
 
   const affordableOptions = rankedAwardOptions.filter(
-    (option) => option.hasEnoughPoints,
+    (option) => option.hasEnoughPoints && option.isComparableForRecommendation,
   );
   const bestOverall = affordableOptions[0];
 
@@ -383,7 +459,10 @@ function assignRecommendationLabels(
   const bestValueOption = nonTopAffordableOptions.reduce<
     (typeof nonTopAffordableOptions)[number] | undefined
   >((currentBest, option) => {
-    if (!currentBest || (option.centsPerPoint ?? 0) > (currentBest.centsPerPoint ?? 0)) {
+    if (
+      !currentBest ||
+      (option.centsPerPoint ?? 0) > (currentBest.centsPerPoint ?? 0)
+    ) {
       return option;
     }
 
@@ -421,18 +500,21 @@ function assignRecommendationLabels(
     labels.set(lowestFeesOption.id, "lowest_fees");
   }
 
-  return rankedAwardOptions.map(({ hasEnoughPoints, ...option }) => {
-    void hasEnoughPoints;
+  return rankedAwardOptions.map(
+    ({ hasEnoughPoints, isComparableForRecommendation, ...option }) => {
+      void hasEnoughPoints;
+      void isComparableForRecommendation;
 
-    return {
-      ...option,
-      recommendationLabel:
-        labels.get(option.id) ??
-        (option.taxesAndFeesUsd !== undefined && option.taxesAndFeesUsd <= 100
-          ? "lowest_fees"
-          : "best_value"),
-    };
-  });
+      return {
+        ...option,
+        recommendationLabel:
+          labels.get(option.id) ??
+          (option.taxesAndFeesUsd !== undefined && option.taxesAndFeesUsd <= 100
+            ? "lowest_fees"
+            : "best_value"),
+      };
+    },
+  );
 }
 
 export function scoreAwardOptions(
@@ -440,23 +522,40 @@ export function scoreAwardOptions(
   cashOption: CashFlightOption | undefined,
   accounts: PointsAccount[],
   transferPartners: TransferPartner[],
+  search?: SavedSearch,
 ): RecommendationResultSet {
   const scoredAwardOptions = awardOptions.map((awardOption) => {
-    const centsPerPoint = cashOption
-      ? calculateCentsPerPoint(
-          cashOption.cashPriceUsd,
-          awardOption.taxesAndFeesUsd,
-          awardOption.pointsRequired,
-        )
-      : undefined;
+    const comparability =
+      cashOption && search
+        ? getCashAwardComparability({ search, cashOption, awardOption })
+        : undefined;
+    const isComparable =
+      !comparability || comparability.status === "comparable";
+    const centsPerPoint =
+      cashOption && isComparable
+        ? calculateCentsPerPoint(
+            cashOption.cashPriceUsd,
+            awardOption.taxesAndFeesUsd,
+            awardOption.pointsRequired,
+          )
+        : undefined;
     const pointsFit = getPointsFit(awardOption, accounts, transferPartners);
 
     return {
       ...awardOption,
-      cashComparableUsd: cashOption?.cashPriceUsd,
+      cashComparableUsd:
+        cashOption && isComparable ? cashOption.cashPriceUsd : undefined,
       centsPerPoint,
-      score: buildRecommendationScore(awardOption, centsPerPoint ?? 0, pointsFit),
+      comparability,
+      score: buildRecommendationScore(
+        awardOption,
+        centsPerPoint ?? 0,
+        pointsFit,
+        comparability,
+      ),
       hasEnoughPoints: pointsFit.hasEnoughPoints,
+      isComparableForRecommendation:
+        isComparable && isEligibleForBookableRecommendation(awardOption),
     };
   });
   const rankedAwardOptions = assignRecommendationLabels(

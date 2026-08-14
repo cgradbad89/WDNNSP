@@ -7,6 +7,8 @@ import type {
   ProviderResultReference,
 } from "@/types/providerResults";
 import type { SavedSearch } from "@/types/search";
+import { createSearchFingerprint } from "@/lib/comparison/searchFingerprint";
+import { normalizeLoyaltyProgram } from "@/lib/points/loyaltyPrograms";
 import { createFlightItineraryFromRouteDetail } from "@/lib/results/routeDetails";
 
 export const MOCK_RESULT_SEARCHED_AT = "2026-06-12T00:00:00.000Z";
@@ -100,13 +102,6 @@ const genericAwardPointsByPassenger = {
   },
 } as const;
 
-const awardProgramIds: Record<string, string> = {
-  "air canada aeroplan": "air-canada-aeroplan",
-  "air france-klm flying blue": "air-france-klm-flying-blue",
-  "united mileageplus": "united-mileageplus",
-  "virgin atlantic flying club": "virgin-atlantic-flying-club",
-};
-
 function createUsdMoney(amount: number): PriceMoney {
   return {
     amount,
@@ -114,7 +109,10 @@ function createUsdMoney(amount: number): PriceMoney {
   };
 }
 
-function addMockCashMetadata(option: CashFlightOption): CashFlightOption {
+function addMockCashMetadata(
+  option: CashFlightOption,
+  search: SavedSearch,
+): CashFlightOption {
   const price = createUsdMoney(option.cashPriceUsd);
 
   return {
@@ -124,6 +122,16 @@ function addMockCashMetadata(option: CashFlightOption): CashFlightOption {
       resultId: option.id,
     },
     freshness: { ...MOCK_FRESHNESS },
+    cabinConfirmed: true,
+    comparison: {
+      searchFingerprint: createSearchFingerprint(search),
+      tripType: search.tripType,
+      passengerCount: Math.max(1, search.passengers),
+      cabin: search.cabin,
+      cabinConfirmed: true,
+      isExactDateComparable: true,
+      isBenchmarkOnly: false,
+    },
     price,
     priceBreakdown: {
       total: price,
@@ -135,12 +143,9 @@ function addMockCashMetadata(option: CashFlightOption): CashFlightOption {
   };
 }
 
-function getAwardProgramId(airlineProgram: string): string | undefined {
-  return awardProgramIds[airlineProgram.trim().toLowerCase()];
-}
-
 function addMockAwardMetadata(
   option: AwardFlightOption,
+  search: SavedSearch,
   passengers: number,
 ): AwardFlightOption {
   // Mock award options always set taxesAndFeesUsd explicitly (see the
@@ -151,7 +156,12 @@ function addMockAwardMetadata(
     option.taxesAndFeesUsd !== undefined
       ? createUsdMoney(option.taxesAndFeesUsd)
       : undefined;
-  const sourceProgramId = getAwardProgramId(option.airlineProgram);
+  const programNormalization = normalizeLoyaltyProgram({
+    provider: "mock",
+    rawProgramId: option.sourceProgramId,
+    rawProgramName: option.airlineProgram,
+  });
+  const sourceProgramId = programNormalization.programId;
 
   return {
     ...option,
@@ -164,7 +174,17 @@ function addMockAwardMetadata(
     availableSeats: passengers,
     ...(fees ? { fees, taxesAndFees: fees } : {}),
     ...(sourceProgramId ? { sourceProgramId } : {}),
-    sourceProgramLabel: option.airlineProgram,
+    sourceProgramLabel: programNormalization.displayName ?? option.airlineProgram,
+    comparison: {
+      searchFingerprint: createSearchFingerprint(search),
+      tripType: search.tripType,
+      passengerCount: passengers,
+      cabin: option.cabin,
+      cabinConfirmed: true,
+      isExactDateComparable: true,
+      isBenchmarkOnly: false,
+      availabilityStatus: "available",
+    },
     marketingAirline: option.operatingAirline ?? option.airlineProgram,
     ...(option.routeDetail
       ? { itinerary: createFlightItineraryFromRouteDetail(option.routeDetail) }
@@ -174,10 +194,11 @@ function addMockAwardMetadata(
 }
 
 function addMockAwardMetadataToOptions(
+  search: SavedSearch,
   options: AwardFlightOption[],
   passengers: number,
 ): AwardFlightOption[] {
-  return options.map((option) => addMockAwardMetadata(option, passengers));
+  return options.map((option) => addMockAwardMetadata(option, search, passengers));
 }
 
 function normalizeCode(code: string): string {
@@ -490,7 +511,7 @@ export function getMockCashOptionForSearch(
     ? makeCashOptionNonstop(cashOption)
     : normalizeCashRoute(cashOption);
 
-  return addMockCashMetadata(normalizedCashOption);
+  return addMockCashMetadata(normalizedCashOption, search);
 }
 
 export function getMockAwardOptionsForSearch(
@@ -504,6 +525,7 @@ export function getMockAwardOptionsForSearch(
     const points = tokyoAwardPointsByPassenger[search.cabin];
 
     return addMockAwardMetadataToOptions(
+      search,
       normalizeAwardOptionsForSearch(search, [
         {
           id: `mock-aeroplan-${origin}-${destination}`,
@@ -595,6 +617,7 @@ export function getMockAwardOptionsForSearch(
   const points = genericAwardPointsByPassenger[search.cabin];
 
   return addMockAwardMetadataToOptions(
+    search,
     normalizeAwardOptionsForSearch(search, [
       {
         id: `mock-aeroplan-${origin}-${destination}`,
