@@ -500,6 +500,24 @@ cash is marked benchmark-only unless a future implementation can prove exact
 comparability. Stale, unavailable, waitlist, and unknown award availability
 are not eligible for Best Overall.
 
+As of Phase 1B (August 14, 2026), `/results` also runs a unified cash-vs-award
+decision layer after award scoring (`src/lib/decisions/decisionEngine.ts`).
+The layer converts the best available cash fare and ranked award rows into
+typed `DecisionOption`s (`src/types/decisions.ts`) so the app can recommend
+either "Pay cash" or a points transfer as competing ways to satisfy the active
+search. It is intentionally a pure bridge layer: it does not call new APIs,
+create alerts, persist decisions, or attempt booking. Award options remain
+ineligible for the unified recommendation when comparability is unsafe, fees
+are unknown, availability is stale/unavailable/waitlist/unknown, the program
+cannot be resolved, or the user lacks usable points. Cash options are ineligible
+when they are benchmark-only, cabin/date comparability is not proven, passenger
+basis is missing, or the normalized price is unavailable.
+
+Phase 1B uses default point-valuation assumptions from
+`src/data/pointValuations.ts` to compare points redemptions against cash. These
+assumptions are product defaults, not personalized market prices, and should be
+treated as tunable copy/config until user-specific valuation controls exist.
+
 ---
 
 #### 5.9 Results Page
@@ -599,6 +617,13 @@ Results page layout, as of the August 12, 2026 results-page redesign session:
   explanations, and warnings previously always shown - no information was
   removed, only progressively disclosed. "View route details" remains a
   separate, always-visible action per row.
+- As of Phase 1B, the hero card is driven by the unified `DecisionOption`
+  result instead of only by the top award row. If cash wins, the hero says
+  "Pay cash" and leaves all award rows in the ranked list for comparison. If an
+  award wins, the previous transfer-recommendation hero behavior is preserved
+  and that award is excluded from the compact rows. If no safe cash or award
+  option is eligible, `/results` shows the neutral "Options need verification"
+  state and keeps unsafe awards in the regular list.
 
 As of the August 13, 2026 unreported-fields session, per-field disclosure
 replaced the fabricated defaults an earlier audit found: award rows and the
@@ -1336,9 +1361,10 @@ Initial route inventory:
 - `/design/search` keeps the design-only run-search-first prototype as a reference, including airport autocomplete mock states
 - `/design/results` keeps the design-only results, edit-search, route-detail, and save-search prototype as a reference
 - `/results` shows deterministic mock cash and award results from provider
-  envelopes, ranked by the initial recommendation engine, with source/freshness
-  labels and no-results, partial-failure, rate-limit, unsupported-route, and
-  stale-data states ready for future real providers
+  envelopes, ranked by the initial award recommendation engine and then bridged
+  through the Phase 1B unified cash-vs-award decision layer, with
+  source/freshness labels and no-results, partial-failure, rate-limit,
+  unsupported-route, and stale-data states ready for future real providers
 - `/api/search/flights` accepts `POST` requests from `/results`, validates the
   active `SavedSearch`, runs current mock provider orchestration server-side,
   and returns app-owned `FlightSearchApiResponse` JSON

@@ -3,6 +3,7 @@
 import type { JSX } from "react";
 import { CentsPerPointHelp } from "@/components/results/CentsPerPointHelp";
 import type { ScoredAwardOption } from "@/lib/scoring/recommendations";
+import type { DecisionOption } from "@/types/decisions";
 import type { CashFlightOption } from "@/types/flights";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
@@ -17,26 +18,31 @@ function formatCurrency(value: number): string {
 
 interface ResultsHeaderProps {
   bestAwardOption: ScoredAwardOption | undefined;
+  bestDecisionOption: DecisionOption | undefined;
   cashOption: CashFlightOption | undefined;
   selectedSearchName: string;
 }
 
 export function ResultsHeader({
   bestAwardOption,
+  bestDecisionOption,
   cashOption,
   selectedSearchName,
 }: ResultsHeaderProps): JSX.Element {
-  const hasAnyResults = bestAwardOption !== undefined || cashOption !== undefined;
-  const title = bestAwardOption
+  const hasAnyResults =
+    bestDecisionOption !== undefined ||
+    bestAwardOption !== undefined ||
+    cashOption !== undefined;
+  const title = bestDecisionOption
     ? `Best option for ${selectedSearchName}`
     : hasAnyResults
       ? `Available results for ${selectedSearchName}`
       : `No provider results for ${selectedSearchName}`;
   const description =
-    bestAwardOption && cashOption
-      ? "Cash fare estimates and award provider data are compared for the active search, then ranked with the weighted recommendation engine."
-      : bestAwardOption
-        ? "Award options are ranked for the active search, but the cash provider did not return a fare estimate for cash-backed cents-per-point."
+    bestDecisionOption?.type === "cash"
+      ? "Cash and award options are evaluated as competing ways to satisfy the active search using default point-valuation assumptions."
+      : bestDecisionOption?.type === "award"
+        ? "Cash fare estimates and award provider data are compared for the active search, then ranked by the unified decision engine."
         : cashOption
           ? "A cash fare estimate is available for this search, but no award recommendation is available from the current provider data."
           : "The current providers did not return usable cash or award results for this search.";
@@ -61,7 +67,7 @@ export function ResultsHeader({
               Recommendation score
             </p>
             <p className="mt-2 text-xl font-semibold text-[#14211b]">
-              {bestAwardOption?.score.totalScore ?? "None"}
+              {bestDecisionOption?.score ?? "None"}
             </p>
           </div>
           <div>

@@ -27,6 +27,7 @@ import { SearchSummaryStrip } from "@/components/results/SearchSummaryStrip";
 import { AIRPORT_GROUPS } from "@/data/airportGroups";
 import { TRANSFER_PARTNERS } from "@/data/transferPartners";
 import { expandAirportCode } from "@/lib/airports/groups";
+import { buildDecisionResultSet } from "@/lib/decisions/decisionEngine";
 import { searchFlightsViaApi } from "@/lib/providers/client";
 import { getFlightSearchDisplayState } from "@/lib/providers/display";
 import type { FlightSearchEnvelope } from "@/lib/providers/types";
@@ -364,26 +365,44 @@ export function ResultsPageClient(): JSX.Element {
     () => applyResultsFilters(decoratedAwardOptions, filters),
     [decoratedAwardOptions, filters],
   );
-  // bestAwardOption is chosen only from true score-approved recommendations.
-  // Non-comparable rows can still appear in the ranked list, but they must not
-  // be promoted into the large hero recommendation slot.
+  const decisionResults = useMemo(
+    () =>
+      buildDecisionResultSet({
+        awardOptions: filteredAwardOptions,
+        cashOption: recommendationResults.cashOption,
+        search: selectedSearch,
+      }),
+    [filteredAwardOptions, recommendationResults.cashOption, selectedSearch],
+  );
+  const bestDecisionOption = decisionResults.bestOverallOption;
+  const awardOptionsForDisplay = useMemo(
+    () =>
+      bestDecisionOption?.type === "cash"
+        ? filteredAwardOptions.map((option) =>
+            option.recommendationLabel === "best_overall"
+              ? { ...option, recommendationLabel: "cash_check" as const }
+              : option,
+          )
+        : filteredAwardOptions,
+    [bestDecisionOption?.type, filteredAwardOptions],
+  );
   const bestAwardOption =
-    hasAwardResults
-      ? filteredAwardOptions.find(
-          (option) => option.recommendationLabel === "best_overall",
+    bestDecisionOption?.type === "award"
+      ? awardOptionsForDisplay.find(
+          (option) => option.id === bestDecisionOption.sourceOptionId,
         )
       : undefined;
   const shouldShowNoSafeRecommendationState =
-    hasAwardResults && filteredAwardOptions.length > 0 && !bestAwardOption;
+    hasAwardResults && filteredAwardOptions.length > 0 && !bestDecisionOption;
   // The hero card above already shows bestAwardOption in full detail, so it
   // is excluded from the compact rows below to avoid showing the same
   // option twice - the "remaining ranked options" from the mockup brief.
   const remainingAwardOptions = useMemo(
     () =>
-      filteredAwardOptions.filter(
+      awardOptionsForDisplay.filter(
         (option) => option.id !== bestAwardOption?.id,
       ),
-    [filteredAwardOptions, bestAwardOption],
+    [awardOptionsForDisplay, bestAwardOption],
   );
   const sortedRemainingAwardOptions = useMemo(
     () => sortAwardOptions(remainingAwardOptions, sort),
@@ -644,6 +663,7 @@ export function ResultsPageClient(): JSX.Element {
 
       <ResultsHeader
         bestAwardOption={bestAwardOption}
+        bestDecisionOption={bestDecisionOption}
         cashOption={cashOption}
         selectedSearchName={selectedSearch.name}
       />
@@ -708,6 +728,7 @@ export function ResultsPageClient(): JSX.Element {
             <>
               <BestRecommendationCard
                 bestAwardOption={bestAwardOption}
+                bestDecisionOption={bestDecisionOption}
                 cashBenchmark={cashOption?.cashPriceUsd}
               />
               {shouldShowNoSafeRecommendationState ? (

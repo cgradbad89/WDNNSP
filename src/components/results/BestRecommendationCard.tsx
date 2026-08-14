@@ -7,6 +7,7 @@ import type {
   RecommendationLabel,
   ScoredAwardOption,
 } from "@/lib/scoring/recommendations";
+import type { DecisionLabel, DecisionOption } from "@/types/decisions";
 import type { AwardFlightOption } from "@/types/awards";
 import type { Cabin, RouteDetail } from "@/types/flights";
 
@@ -58,6 +59,30 @@ function formatRecommendationLabel(label: RecommendationLabel): string {
   }
 
   return "Not Enough Points";
+}
+
+function formatDecisionLabel(label: DecisionLabel | undefined): string {
+  if (label === "best_overall") {
+    return "Best Overall";
+  }
+
+  if (label === "best_points_value") {
+    return "Best Points Value";
+  }
+
+  if (label === "lowest_out_of_pocket") {
+    return "Lowest Out of Pocket";
+  }
+
+  if (label === "cash_baseline") {
+    return "Cash Baseline";
+  }
+
+  if (label === "needs_verification" || label === "not_comparable") {
+    return "Needs Verification";
+  }
+
+  return "Decision";
 }
 
 function getRouteSummary(option: {
@@ -145,13 +170,69 @@ function MetricCard({
 
 interface BestRecommendationCardProps {
   bestAwardOption: ScoredAwardOption | undefined;
+  bestDecisionOption: DecisionOption | undefined;
   cashBenchmark: number | undefined;
 }
 
 export function BestRecommendationCard({
   bestAwardOption,
+  bestDecisionOption,
   cashBenchmark,
 }: BestRecommendationCardProps): JSX.Element | null {
+  if (!bestDecisionOption) {
+    return null;
+  }
+
+  if (bestDecisionOption.type === "cash") {
+    return (
+      <article className="rounded-xl border-2 border-[#a8d5bd] bg-[#0f2f22] p-6 text-white shadow-[0_24px_60px_rgba(15,47,34,0.24)] md:p-8">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="inline-flex items-center gap-2 rounded-full bg-[#a8d5bd]/15 px-3 py-1 text-sm font-semibold uppercase tracking-[0.16em] text-[#a8d5bd]">
+              {formatDecisionLabel(bestDecisionOption.label)}
+            </p>
+            <h3 className="mt-4 max-w-2xl text-3xl font-semibold tracking-tight">
+              {bestDecisionOption.display.title}
+            </h3>
+            <p className="mt-2 max-w-2xl text-base leading-6 text-[#cfe6d8]">
+              Cash appears to be the better option for this search under the
+              current point-valuation assumptions.
+            </p>
+          </div>
+          <PlaneIcon className="h-12 w-12 shrink-0 text-[#a8d5bd]" />
+        </div>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricCard
+            label="Score"
+            value={String(bestDecisionOption.score ?? "N/A")}
+          />
+          <MetricCard
+            label="Cash price"
+            value={bestDecisionOption.display.priceSummary}
+          />
+          <MetricCard label="Points required" value="None" />
+          <MetricCard label="CPP" value="N/A" />
+        </div>
+
+        <div className="mt-5 space-y-3">
+          <div className="flex gap-3 text-sm leading-6">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#a8d5bd] text-[#0f2f22]">
+              <CheckIcon className="h-3.5 w-3.5" />
+            </span>
+            <span className="text-[#e7f2eb]">
+              Award results may still be useful, but none beat the cash option
+              confidently enough to recommend transferring points.
+            </span>
+          </div>
+          <p className="text-sm leading-6 text-[#cfe6d8]">
+            {bestDecisionOption.display.caveat}
+          </p>
+        </div>
+      </article>
+    );
+  }
+
   if (!bestAwardOption) {
     return null;
   }
@@ -161,7 +242,9 @@ export function BestRecommendationCard({
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <p className="inline-flex items-center gap-2 rounded-full bg-[#a8d5bd]/15 px-3 py-1 text-sm font-semibold uppercase tracking-[0.16em] text-[#a8d5bd]">
-            {formatRecommendationLabel(bestAwardOption.recommendationLabel)}
+            {bestDecisionOption.label
+              ? formatDecisionLabel(bestDecisionOption.label)
+              : formatRecommendationLabel(bestAwardOption.recommendationLabel)}
           </p>
           <h3 className="mt-4 max-w-2xl text-3xl font-semibold tracking-tight">
             {formatRecommendationAction(bestAwardOption)}

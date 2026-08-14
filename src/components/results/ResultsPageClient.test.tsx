@@ -316,8 +316,42 @@ describe("ResultsPageClient hero card and compact rows", () => {
     ]);
   });
 
+  it("can recommend cash over awards when the cash fare is the better decision", async () => {
+    const cheapCashOption: CashFlightOption = {
+      ...cashOption,
+      id: "cash-cheap",
+      cashPriceUsd: 900,
+    };
+    const poorAwardOption = createAwardOption({
+      id: "opt-poor-value",
+      pointsRequired: 220000,
+      taxesAndFeesUsd: 300,
+      confidence: "high",
+    });
+
+    await renderResultsWithOptions([poorAwardOption], {
+      data: [cheapCashOption],
+    });
+
+    expect(screen.getByText("Pay cash")).toBeInTheDocument();
+    expect(screen.getAllByText("Best Overall")).toHaveLength(1);
+    expect(
+      screen.getByText(
+        "Cash appears to be the better option for this search under the current point-valuation assumptions.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Transfer points to Air Canada Aeroplan"),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText("Pay Cash Check").length).toBeGreaterThan(0);
+    expect(getRowProgramNames()).toEqual(["Air Canada Aeroplan"]);
+  });
+
   it("shows a neutral verification state instead of promoting a non-comparable first award to the hero", async () => {
-    await renderResultsWithOptions([obscureOption]);
+    await renderResultsWithOptions([obscureOption], {
+      data: [],
+      status: "no_results",
+    });
 
     expect(screen.getByText("Options need verification")).toBeInTheDocument();
     expect(
@@ -331,8 +365,11 @@ describe("ResultsPageClient hero card and compact rows", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps non-comparable award options in the regular ranked list when no safe hero recommendation exists", async () => {
-    await renderResultsWithOptions([obscureOption]);
+  it("keeps unsafe award options in the regular ranked list when no safe hero recommendation exists", async () => {
+    await renderResultsWithOptions([obscureOption], {
+      data: [],
+      status: "no_results",
+    });
 
     const obscureRow = screen
       .getByText("Obscure Airways Program")
@@ -340,7 +377,7 @@ describe("ResultsPageClient hero card and compact rows", () => {
 
     expect(obscureRow).not.toBeNull();
     expect(
-      within(obscureRow as HTMLElement).getByText("Needs Verification"),
+      within(obscureRow as HTMLElement).getByText("Not Enough Points"),
     ).toBeInTheDocument();
     expect(getRowProgramNames()).toEqual(["Obscure Airways Program"]);
   });
