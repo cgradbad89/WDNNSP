@@ -20,6 +20,8 @@ interface ResultsHeaderProps {
   bestAwardOption: ScoredAwardOption | undefined;
   bestDecisionOption: DecisionOption | undefined;
   cashOption: CashFlightOption | undefined;
+  hasAwardResults: boolean;
+  hasCashResults: boolean;
   selectedSearchName: string;
 }
 
@@ -27,25 +29,35 @@ export function ResultsHeader({
   bestAwardOption,
   bestDecisionOption,
   cashOption,
+  hasAwardResults,
+  hasCashResults,
   selectedSearchName,
 }: ResultsHeaderProps): JSX.Element {
-  const hasAnyResults =
-    bestDecisionOption !== undefined ||
-    bestAwardOption !== undefined ||
-    cashOption !== undefined;
+  const hasAnyResults = hasCashResults || hasAwardResults;
   const title = bestDecisionOption
     ? `Best option for ${selectedSearchName}`
-    : hasAnyResults
-      ? `Available results for ${selectedSearchName}`
-      : `No provider results for ${selectedSearchName}`;
+    : hasAwardResults && !hasCashResults
+      ? `Partial results for ${selectedSearchName}`
+      : hasCashResults && !hasAwardResults
+        ? `Cash results for ${selectedSearchName}`
+        : hasAnyResults
+          ? `Partial results for ${selectedSearchName}`
+          : `No provider results for ${selectedSearchName}`;
   const description =
     bestDecisionOption?.type === "cash"
       ? "Cash and award options are evaluated as competing ways to satisfy the active search using default point-valuation assumptions."
       : bestDecisionOption?.type === "award"
         ? "Cash fare estimates and award provider data are compared for the active search, then ranked by the unified decision engine."
-        : cashOption
-          ? "A cash fare estimate is available for this search, but no award recommendation is available from the current provider data."
-          : "The current providers did not return usable cash or award results for this search.";
+        : hasAwardResults && !hasCashResults
+          ? "Award options are available, but cash pricing is unavailable or not comparable for this search."
+          : hasCashResults && !hasAwardResults
+            ? "No comparable award options were found for this search."
+            : hasAnyResults
+              ? "Provider results are available, but no cash-vs-award option is safe enough to recommend yet."
+              : "The current providers did not return usable cash or award results for this search.";
+  const cashEstimate = hasCashResults && cashOption
+    ? formatCurrency(cashOption.cashPriceUsd)
+    : "None";
 
   return (
     <section className="rounded-lg border border-[#d9e2d6] bg-white p-5 shadow-[0_18px_50px_rgba(31,63,45,0.08)] md:p-6">
@@ -83,7 +95,7 @@ export function ResultsHeader({
               Cash estimate
             </p>
             <p className="mt-2 text-xl font-semibold text-[#14211b]">
-              {cashOption ? formatCurrency(cashOption.cashPriceUsd) : "None"}
+              {cashEstimate}
             </p>
           </div>
         </div>

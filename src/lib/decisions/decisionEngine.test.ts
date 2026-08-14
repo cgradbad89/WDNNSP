@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createSearchFingerprint } from "@/lib/comparison/searchFingerprint";
 import { buildDecisionResultSet } from "@/lib/decisions/decisionEngine";
 import { scoreAwardOptions } from "@/lib/scoring/recommendations";
 import type { AwardFlightOption } from "@/types/awards";
@@ -65,6 +66,7 @@ function createCashOption(
     cashPriceUsd: 5000,
     stops: 1,
     comparison: {
+      searchFingerprint: createSearchFingerprint(search),
       tripType: "round_trip",
       passengerCount: 1,
       cabin: "business",
@@ -96,6 +98,7 @@ function createAwardOption(
     stops: 1,
     confidence: "high",
     comparison: {
+      searchFingerprint: createSearchFingerprint(search),
       tripType: "round_trip",
       passengerCount: 1,
       cabin: "business",
@@ -242,6 +245,88 @@ describe("unified decision engine", () => {
     );
   });
 
+  it("blocks cash from winning when search fingerprint metadata mismatches", () => {
+    const result = buildDecisionResult({
+      cash: createCashOption({
+        comparison: {
+          searchFingerprint: "different-search-fingerprint",
+          tripType: "round_trip",
+          passengerCount: 1,
+          cabin: "business",
+          cabinConfirmed: true,
+          isExactDateComparable: true,
+          isBenchmarkOnly: false,
+        },
+      }),
+      awards: [],
+    });
+
+    expect(result.bestOverallOption).toBeUndefined();
+    expect(result.cashBaselineOption).toMatchObject({
+      type: "cash",
+      isEligibleForRecommendation: false,
+      comparabilityStatus: "not_comparable",
+    });
+    expect(result.cashBaselineOption?.reasons).toContain(
+      "unknown_itinerary_relationship",
+    );
+  });
+
+  it("blocks cash from winning when trip or departure date metadata mismatches", () => {
+    const result = buildDecisionResult({
+      cash: createCashOption({
+        departureDateTime: "2027-05-03T10:00:00Z",
+        comparison: {
+          searchFingerprint: createSearchFingerprint(search),
+          tripType: "one_way",
+          passengerCount: 1,
+          cabin: "business",
+          cabinConfirmed: true,
+          isExactDateComparable: true,
+          isBenchmarkOnly: false,
+        },
+      }),
+      awards: [],
+    });
+
+    expect(result.bestOverallOption).toBeUndefined();
+    expect(result.cashBaselineOption).toMatchObject({
+      type: "cash",
+      isEligibleForRecommendation: false,
+      comparabilityStatus: "not_comparable",
+    });
+    expect(result.cashBaselineOption?.reasons).toEqual(
+      expect.arrayContaining(["trip_type_mismatch", "date_mismatch"]),
+    );
+  });
+
+  it("blocks cash from winning when cabin metadata mismatches or is unconfirmed", () => {
+    const result = buildDecisionResult({
+      cash: createCashOption({
+        cabin: "economy",
+        cabinConfirmed: false,
+        comparison: {
+          searchFingerprint: createSearchFingerprint(search),
+          tripType: "round_trip",
+          passengerCount: 1,
+          cabin: "economy",
+          cabinConfirmed: false,
+          isExactDateComparable: true,
+          isBenchmarkOnly: false,
+        },
+      }),
+      awards: [],
+    });
+
+    expect(result.bestOverallOption).toBeUndefined();
+    expect(result.cashBaselineOption).toMatchObject({
+      type: "cash",
+      isEligibleForRecommendation: false,
+      comparabilityStatus: "not_comparable",
+    });
+    expect(result.cashBaselineOption?.reasons).toContain("cabin_mismatch");
+  });
+
   it("keeps Travelpayouts benchmark-only cash from creating fake exact CPP", () => {
     const result = buildDecisionResult({
       cash: createCashOption({
@@ -268,7 +353,11 @@ describe("unified decision engine", () => {
 
     const awardDecision = result.options.find((option) => option.type === "award");
 
-    expect(result.cashBaselineOption?.isEligibleForRecommendation).toBe(false);
+    expect(result.cashBaselineOption).toMatchObject({
+      type: "cash",
+      label: "cash_baseline",
+      isEligibleForRecommendation: false,
+    });
     expect(awardDecision?.scoreBreakdown?.centsPerPoint).toBeUndefined();
     expect(result.bestOverallOption).toBeUndefined();
   });

@@ -665,6 +665,8 @@ export function ResultsPageClient(): JSX.Element {
         bestAwardOption={bestAwardOption}
         bestDecisionOption={bestDecisionOption}
         cashOption={cashOption}
+        hasAwardResults={hasAwardResults}
+        hasCashResults={hasCashResults}
         selectedSearchName={selectedSearch.name}
       />
 

@@ -2,6 +2,7 @@ import {
   DEFAULT_POINT_VALUATIONS,
   FALLBACK_POINT_VALUATION_CENTS,
 } from "@/data/pointValuations";
+import { createSearchFingerprint } from "@/lib/comparison/searchFingerprint";
 import type {
   DecisionLabel,
   DecisionOption,
@@ -95,18 +96,55 @@ function getCashDecisionOption({
   search: SavedSearch;
 }): DecisionOption {
   const reasons: string[] = [];
+  const cashComparison = cashOption.comparison;
+  const searchFingerprint = createSearchFingerprint(search);
+  const expectedPassengerCount = Math.max(1, search.passengers);
   const priceKnown = Number.isFinite(cashOption.cashPriceUsd);
+  const hasSearchFingerprintMismatch =
+    cashComparison?.searchFingerprint !== undefined &&
+    cashComparison.searchFingerprint !== searchFingerprint;
+  const hasTripTypeMismatch =
+    cashComparison?.tripType !== undefined &&
+    cashComparison.tripType !== search.tripType;
+  const hasDepartureDateMismatch =
+    cashOption.departureDateTime.slice(0, 10) !== search.departDate;
+  const hasCabinMismatch =
+    cashOption.cabin !== search.cabin ||
+    cashComparison?.cabin !== search.cabin ||
+    cashComparison?.cabinConfirmed === false ||
+    cashOption.cabinConfirmed === false;
   const passengerBasisValid =
     Number.isFinite(search.passengers) &&
     search.passengers > 0 &&
-    cashOption.comparison?.passengerCount === search.passengers;
+    cashComparison?.passengerCount === expectedPassengerCount;
   const isBenchmarkOnly =
-    cashOption.comparison?.isBenchmarkOnly === true ||
-    cashOption.comparison?.isExactDateComparable === false ||
+    cashComparison?.isBenchmarkOnly === true ||
+    cashComparison?.isExactDateComparable === false ||
     cashOption.cabinConfirmed === false ||
     hasLimitation(cashOption, "provider_benchmark_only");
+
+  if (hasSearchFingerprintMismatch) {
+    reasons.push("unknown_itinerary_relationship");
+  }
+
+  if (hasTripTypeMismatch) {
+    reasons.push("trip_type_mismatch");
+  }
+
+  if (search.tripType === "round_trip" && !search.returnDate) {
+    reasons.push("return_date_missing");
+  }
+
+  if (hasDepartureDateMismatch) {
+    reasons.push("date_mismatch");
+  }
+
+  if (hasCabinMismatch) {
+    reasons.push("cabin_mismatch");
+  }
+
   const isEligibleForRecommendation =
-    priceKnown && passengerBasisValid && !isBenchmarkOnly;
+    priceKnown && passengerBasisValid && !isBenchmarkOnly && reasons.length === 0;
 
   if (!priceKnown) {
     reasons.push("cash price missing");
@@ -148,7 +186,7 @@ function getCashDecisionOption({
     score: totalScore,
     scoreBreakdown,
     isEligibleForRecommendation,
-    comparabilityStatus: isBenchmarkOnly ? "not_comparable" : "comparable",
+    comparabilityStatus: reasons.length > 0 ? "not_comparable" : "comparable",
     reasons,
     display: {
       title: "Pay cash",

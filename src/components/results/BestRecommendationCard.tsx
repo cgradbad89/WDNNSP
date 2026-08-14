@@ -293,6 +293,12 @@ export function BestRecommendationCard({
             <span className="text-[#e7f2eb]">{explanation}</span>
           </div>
         ))}
+        {bestDecisionOption.display.caveat ? (
+          <p className="text-sm leading-6 text-[#cfe6d8]">
+            {bestDecisionOption.display.caveat} Your personal value for these
+            points may differ.
+          </p>
+        ) : null}
       </div>
     </article>
   );

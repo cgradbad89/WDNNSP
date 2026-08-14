@@ -511,7 +511,8 @@ ineligible for the unified recommendation when comparability is unsafe, fees
 are unknown, availability is stale/unavailable/waitlist/unknown, the program
 cannot be resolved, or the user lacks usable points. Cash options are ineligible
 when they are benchmark-only, cabin/date comparability is not proven, passenger
-basis is missing, or the normalized price is unavailable.
+basis is missing, the cash comparison fingerprint/trip/date/cabin metadata
+does not align with the active search, or the normalized price is unavailable.
 
 Phase 1B uses default point-valuation assumptions from
 `src/data/pointValuations.ts` to compare points redemptions against cash. These

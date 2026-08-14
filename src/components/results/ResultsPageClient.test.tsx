@@ -2,6 +2,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ResultsPageClient } from "@/components/results/ResultsPageClient";
+import { createSearchFingerprint } from "@/lib/comparison/searchFingerprint";
 import type { AwardFlightOption } from "@/types/awards";
 import type { CashFlightOption } from "@/types/flights";
 import type { PointsAccount } from "@/types/points";
@@ -69,6 +70,7 @@ const activeSearch: SavedSearch = {
 };
 
 const saveActiveSearchMock = vi.fn().mockResolvedValue(undefined);
+const activeSearchFingerprint = createSearchFingerprint(activeSearch);
 
 vi.mock("@/lib/search/useSearchData", () => ({
   useSearchData: () => ({
@@ -97,6 +99,7 @@ function createAwardOption(
     "United MileagePlus": "united-mileageplus",
   };
   const comparison = {
+    searchFingerprint: activeSearchFingerprint,
     tripType: activeSearch.tripType,
     passengerCount: activeSearch.passengers,
     cabin: activeSearch.cabin,
@@ -143,6 +146,7 @@ const cashOption: CashFlightOption = {
   cabinConfirmed: true,
   cashPriceUsd: 4800,
   comparison: {
+    searchFingerprint: activeSearchFingerprint,
     tripType: activeSearch.tripType,
     passengerCount: activeSearch.passengers,
     cabin: activeSearch.cabin,
@@ -306,6 +310,10 @@ describe("ResultsPageClient hero card and compact rows", () => {
 
     // Hero card (BestRecommendationCard) shows the top pick.
     expect(screen.getByText("Transfer points to United MileagePlus")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Compared using a default 1\.4 cpp valuation for United MileagePlus\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Your personal value for these points may differ\./)).toBeInTheDocument();
     expect(screen.queryByText("Options need verification")).not.toBeInTheDocument();
 
     // The same option is not duplicated as a compact row below.
@@ -339,6 +347,9 @@ describe("ResultsPageClient hero card and compact rows", () => {
       screen.getByText(
         "Cash appears to be the better option for this search under the current point-valuation assumptions.",
       ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Cash is evaluated as a direct out-of-pocket option."),
     ).toBeInTheDocument();
     expect(
       screen.queryByText("Transfer points to Air Canada Aeroplan"),
@@ -391,10 +402,68 @@ describe("ResultsPageClient hero card and compact rows", () => {
     });
 
     expect(
+      screen.getByText("No provider results for Test Trip"),
+    ).toBeInTheDocument();
+    expect(
       screen.getAllByText("No provider results for this search").length,
     ).toBeGreaterThan(0);
     expect(screen.queryByText("Options need verification")).not.toBeInTheDocument();
     expect(screen.queryByText("Best Overall")).not.toBeInTheDocument();
+  });
+
+  it("uses partial-results header language when award rows are visible but cash is unavailable", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption], {
+      data: [],
+      status: "no_results",
+      overallStatus: "partial",
+    });
+
+    expect(screen.getByText("Partial results for Test Trip")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Award options are available, but cash pricing is unavailable or not comparable for this search.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("No provider results for Test Trip"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("United MileagePlus")).toBeInTheDocument();
+  });
+
+  it("uses cash-results header language when cash is visible but award rows are unavailable", async () => {
+    const benchmarkCashOption: CashFlightOption = {
+      ...cashOption,
+      source: "travelpayouts",
+      cabinConfirmed: false,
+      comparison: {
+        ...cashOption.comparison,
+        cabinConfirmed: false,
+        isExactDateComparable: false,
+        isBenchmarkOnly: true,
+      },
+      limitations: [
+        {
+          code: "provider_benchmark_only",
+          severity: "warning",
+          message: "Benchmark only.",
+        },
+      ],
+    };
+
+    await renderResultsWithOptions([], {
+      data: [benchmarkCashOption],
+      awardStatus: "no_results",
+      overallStatus: "partial",
+      providerLabel: "Travelpayouts",
+    });
+
+    expect(screen.getByText("Cash results for Test Trip")).toBeInTheDocument();
+    expect(
+      screen.getByText("No comparable award options were found for this search."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("No provider results for Test Trip"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows transfer-required and not-enough-points badges for the right rows", async () => {
