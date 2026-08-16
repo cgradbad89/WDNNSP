@@ -1,4 +1,5 @@
 import { TRANSFER_PARTNERS } from "@/data/transferPartners";
+import { SEATS_AERO_SOURCE_MAP } from "@/data/seatsAeroSourceMap";
 import { getCardProgramsForAirline } from "@/lib/transferPartners/lookup";
 import { normalizeLoyaltyProgram } from "@/lib/points/loyaltyPrograms";
 import { createSearchFingerprint } from "@/lib/comparison/searchFingerprint";
@@ -510,7 +511,10 @@ function mapResultCabinToAwardOption({
     rawProgramId: rawProgram,
     rawProgramName: rawProgram,
   });
-  const airlineProgram = programNormalization.displayName ?? rawProgram;
+  const mappedSourceLabel =
+    SEATS_AERO_SOURCE_MAP[rawProgram.trim().toLowerCase()];
+  const airlineProgram =
+    programNormalization.displayName ?? mappedSourceLabel ?? rawProgram;
   const departureDateTime = `${result.Date}T00:00:00Z`;
   const limitations = isDirect
     ? [seatsAeroVerifyLimitation]

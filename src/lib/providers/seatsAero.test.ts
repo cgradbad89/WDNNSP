@@ -217,7 +217,7 @@ describe("searchSeatsAeroAwardFlights", () => {
     expect(envelope.data[0].transferSources).toContain("Chase Ultimate Rewards");
   });
 
-  it("leaves unknown program slugs unresolved and without transfer sources", async () => {
+  it("uses the source map for display labels while keeping unresolved slugs safe", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         data: [
@@ -242,7 +242,7 @@ describe("searchSeatsAeroAwardFlights", () => {
     const envelope = await searchSeatsAeroAwardFlights(search);
 
     expect(envelope.status).toBe("success");
-    expect(envelope.data[0].airlineProgram).toBe("delta");
+    expect(envelope.data[0].airlineProgram).toBe("Delta SkyMiles");
     expect(envelope.data[0].sourceProgramId).toBeUndefined();
     expect(envelope.data[0].transferSources).toEqual([]);
     expect(
