@@ -2,6 +2,8 @@
 
 import type { FormEvent, JSX, MouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AwardLeadsGuidance } from "@/components/results/AwardLeadsGuidance";
+import { ManualCashFareInput } from "@/components/results/ManualCashFareInput";
 import { BestRecommendationCard } from "@/components/results/BestRecommendationCard";
 import { CashBenchmarkCard } from "@/components/results/CashBenchmarkCard";
 import {
@@ -41,6 +43,10 @@ import { getTransferPathDisplays } from "@/lib/results/transferPaths";
 import { scoreAwardOptions } from "@/lib/scoring/recommendations";
 import { useSearchData } from "@/lib/search/useSearchData";
 import {
+  calculateManualEstimatedCpp,
+  isManualVerificationExcluded,
+} from "@/lib/verification/manualValue";
+import {
   hasSearchValidationErrors,
   type SearchValidationErrors,
   validateSavedSearchInput,
@@ -50,6 +56,11 @@ import type { AwardFlightOption } from "@/types/awards";
 import type { CashFlightOption } from "@/types/flights";
 import type { PointsAccount } from "@/types/points";
 import type { SavedSearch } from "@/types/search";
+import type {
+  AwardVerificationState,
+  ManualAwardVerificationInput,
+  ManualCashInput,
+} from "@/types/verification";
 
 const LOCAL_USER_ID = "local-user";
 const EMPTY_CASH_OPTIONS: CashFlightOption[] = [];
@@ -121,6 +132,18 @@ function collapseAirportGroup(codes: string[]): string | undefined {
 
 function formatEditableCodes(codes: string[]): string {
   return collapseAirportGroup(codes) ?? codes[0] ?? "";
+}
+
+function needsManualCashFare(cashOption: CashFlightOption | undefined): boolean {
+  if (!cashOption) {
+    return true;
+  }
+
+  return (
+    cashOption.comparison?.isBenchmarkOnly === true ||
+    cashOption.comparison?.isExactDateComparable === false ||
+    cashOption.cabinConfirmed === false
+  );
 }
 
 function getDirectProgramBalance(
@@ -263,6 +286,8 @@ export function ResultsPageClient(): JSX.Element {
   const [editErrors, setEditErrors] = useState<SearchValidationErrors>({});
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [routeModal, setRouteModal] = useState<RouteDetailsDrawerState>();
+  const [verificationState, setVerificationState] =
+    useState<AwardVerificationState>({ awards: {} });
   const [flightSearchState, setFlightSearchState] = useState<{
     results: FlightSearchEnvelope;
     searchId: string;
@@ -272,6 +297,7 @@ export function ResultsPageClient(): JSX.Element {
     searchId: string;
   }>();
   const modalTriggerRef = useRef<HTMLElement | null>(null);
+  const manualCashFare = verificationState.manualCashFare;
 
   useEffect(() => {
     if (searchData.isLoading) {
@@ -331,9 +357,17 @@ export function ResultsPageClient(): JSX.Element {
         accounts,
         TRANSFER_PARTNERS,
         selectedSearch,
-      ),
+    ),
     [accounts, awardOptions, cashOption, selectedSearch],
   );
+  const manualCashEntryNeeded = needsManualCashFare(
+    recommendationResults.cashOption,
+  );
+  const providerCashFareForManual =
+    recommendationResults.cashOption && !manualCashEntryNeeded &&
+    Number.isFinite(recommendationResults.cashOption.cashPriceUsd)
+      ? recommendationResults.cashOption.cashPriceUsd
+      : undefined;
   const transferPathsByOptionId = useMemo(() => {
     const entries = recommendationResults.rankedAwardOptions.map((option) => [
       option.id,
@@ -351,28 +385,77 @@ export function ResultsPageClient(): JSX.Element {
     () =>
       recommendationResults.rankedAwardOptions.map((option) => {
         const transferPaths = transferPathsByOptionId.get(option.id) ?? [];
+        const verification = verificationState.awards[option.id];
+        const hasManualContext =
+          manualCashFare !== undefined ||
+          verification?.status !== undefined &&
+            verification.status !== "not_verified" ||
+          verification?.verifiedPointsRequired !== undefined ||
+          verification?.verifiedTaxesAndFeesUsd !== undefined;
+        const manuallyExcluded = isManualVerificationExcluded(
+          verification?.status,
+        );
 
         return {
           ...option,
+          ...(manuallyExcluded ? { recommendationLabel: "not_comparable" as const } : {}),
+          manualEstimatedCpp: hasManualContext
+            ? calculateManualEstimatedCpp({
+                awardOption: option,
+                manualCashFare,
+                providerCashFareUsd: providerCashFareForManual,
+                verification,
+              })
+            : undefined,
           sufficientTransferPathCount: transferPaths.filter(
             (path) => path.isSufficient,
           ).length,
+          verification,
         };
       }),
-    [recommendationResults.rankedAwardOptions, transferPathsByOptionId],
+    [
+      manualCashFare,
+      providerCashFareForManual,
+      recommendationResults.rankedAwardOptions,
+      transferPathsByOptionId,
+      verificationState.awards,
+    ],
   );
   const filteredAwardOptions = useMemo(
-    () => applyResultsFilters(decoratedAwardOptions, filters),
+    () =>
+      applyResultsFilters(decoratedAwardOptions, filters) as typeof decoratedAwardOptions,
     [decoratedAwardOptions, filters],
+  );
+  const recommendationAwardOptions = useMemo(
+    () =>
+      filteredAwardOptions.filter(
+        (option) => !isManualVerificationExcluded(option.verification?.status),
+      ),
+    [filteredAwardOptions],
+  );
+  const manualEstimatedCppByAwardId = useMemo(
+    () =>
+      new Map(
+        filteredAwardOptions.flatMap((option) =>
+          option.manualEstimatedCpp
+            ? [[option.id, option.manualEstimatedCpp] as const]
+            : [],
+        ),
+      ),
+    [filteredAwardOptions],
   );
   const decisionResults = useMemo(
     () =>
       buildDecisionResultSet({
-        awardOptions: filteredAwardOptions,
+        awardOptions: recommendationAwardOptions,
         cashOption: recommendationResults.cashOption,
         search: selectedSearch,
       }),
-    [filteredAwardOptions, recommendationResults.cashOption, selectedSearch],
+    [
+      recommendationAwardOptions,
+      recommendationResults.cashOption,
+      selectedSearch,
+    ],
   );
   const bestDecisionOption = decisionResults.bestOverallOption;
   const awardOptionsForDisplay = useMemo(
@@ -416,10 +499,20 @@ export function ResultsPageClient(): JSX.Element {
           option.airlineProgram,
           option.sourceProgramId,
         ),
+        manualEstimatedCpp: decoratedAwardOptions.find(
+          (decoratedOption) => decoratedOption.id === option.id,
+        )?.manualEstimatedCpp,
         option,
         transferPaths: transferPathsByOptionId.get(option.id) ?? [],
+        verification: verificationState.awards[option.id],
       })),
-    [accounts, sortedRemainingAwardOptions, transferPathsByOptionId],
+    [
+      accounts,
+      decoratedAwardOptions,
+      sortedRemainingAwardOptions,
+      transferPathsByOptionId,
+      verificationState.awards,
+    ],
   );
 
   function saveModalTrigger(trigger?: HTMLElement | null): void {
@@ -598,6 +691,41 @@ export function ResultsPageClient(): JSX.Element {
     }));
   }
 
+  function handleSaveManualCashFare(input: ManualCashInput): void {
+    setVerificationState((currentState) => ({
+      ...currentState,
+      manualCashFare: input,
+    }));
+  }
+
+  function handleClearManualCashFare(): void {
+    setVerificationState((currentState) => {
+      const nextState = { ...currentState };
+      delete nextState.manualCashFare;
+      return nextState;
+    });
+  }
+
+  function handleSaveAwardVerification(
+    input: ManualAwardVerificationInput,
+  ): void {
+    setVerificationState((currentState) => ({
+      ...currentState,
+      awards: {
+        ...currentState.awards,
+        [input.awardOptionId]: input,
+      },
+    }));
+  }
+
+  function handleClearAwardVerification(awardOptionId: string): void {
+    setVerificationState((currentState) => {
+      const awards = { ...currentState.awards };
+      delete awards[awardOptionId];
+      return { ...currentState, awards };
+    });
+  }
+
   if (wallet.isLoading || searchData.isLoading) {
     return (
       <div className="rounded-lg border border-[#d9e2d6] bg-white p-6">
@@ -702,6 +830,18 @@ export function ResultsPageClient(): JSX.Element {
         </div>
       ) : null}
 
+      {hasAwardResults && manualCashEntryNeeded ? (
+        <div className="space-y-3">
+          <AwardLeadsGuidance />
+          <ManualCashFareInput
+            onClear={handleClearManualCashFare}
+            onSave={handleSaveManualCashFare}
+            providerLabel={flightSearchResults.cash.metadata.providerLabel}
+            value={manualCashFare}
+          />
+        </div>
+      ) : null}
+
       <section
         aria-label="Booking disclaimer"
         className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3 text-xs leading-5 text-[#526158]"
@@ -767,8 +907,12 @@ export function ResultsPageClient(): JSX.Element {
                   }}
                   hasCashResults={hasCashResults}
                   hasProviderAwardResults={hasAwardResults}
+                  manualEstimatedCppByAwardId={manualEstimatedCppByAwardId}
+                  onClearVerification={handleClearAwardVerification}
+                  onSaveVerification={handleSaveAwardVerification}
                   onViewRoute={handleOpenRouteDetails}
                   totalAwardOptionCount={decoratedAwardOptions.length}
+                  verificationsByAwardId={verificationState.awards}
                 />
                 <ProviderSourceNote
                   envelope={flightSearchResults.awards}

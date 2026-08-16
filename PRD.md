@@ -1486,7 +1486,7 @@ Current implementation status as of August 11, 2026:
   success-vs-stale status decision, no-results/401/403/429/network-failure
   status mapping, and the route's mock-vs-live provider selection for both
   toggle states.
-- Remaining: multiple cash options, manual cash entry, future structured cash
+- Remaining: multiple cash options, future structured cash
   provider integration, production freshness scoring, and Results UI
   adjustments for live-provider itinerary fields Travelpayouts does not supply
   (arrival time, duration, stop count, cabin).
@@ -1580,6 +1580,28 @@ Current implementation status as of August 12, 2026 (results-page redesign):
   badge rendering.
 - Remaining: none identified for this session's scope; underlying scoring
   and live-provider items remain as listed above.
+
+### Phase 1D — Award verification and manual comparison inputs
+
+Current implementation status as of August 16, 2026:
+
+- Completed: local-only Results-page state for manual cash fares and per-award
+  verification status, verified points, and verified taxes/fees; accessible
+  cash-fare and award-verification controls; award-only guidance when
+  comparable cash data is unavailable; and a pure manual CPP helper that uses
+  manual values when present and otherwise uses valid provider-reported values.
+  Manual estimates are display-only and remain distinct from provider CPP.
+- Safety behavior: missing or invalid inputs never become zeroes; manual CPP
+  is unavailable for missing required values, no-longer-available awards, or
+  failed verification; those excluded statuses remain visible but are removed
+  from recommendation/winner state. The existing decision engine and its
+  comparability gates are unchanged.
+- Covered by tests: value validation, manual/provider precedence, CPP
+  calculation and unavailable reasons, control validation/clearing, guidance,
+  exact-cash-plus-manual-fees flow, unavailable-award handling, and preservation
+  of existing recommendation safety behavior.
+- Deferred: persistence beyond the current Results-page session, external
+  booking-site verification, and any automatic availability confirmation.
 
 ---
 

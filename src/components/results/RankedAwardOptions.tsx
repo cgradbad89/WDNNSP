@@ -2,6 +2,7 @@
 
 import type { JSX } from "react";
 import { useState } from "react";
+import { AwardVerificationControls } from "@/components/results/AwardVerificationControls";
 import { CentsPerPointHelp } from "@/components/results/CentsPerPointHelp";
 import { NoProviderResultsState } from "@/components/results/NoProviderResultsState";
 import { ResultsEmptyState } from "@/components/results/ResultsEmptyState";
@@ -22,7 +23,12 @@ import {
   getProviderSourceSummary,
   type ProviderSourceState,
 } from "@/lib/providers/sourceLabel";
+import { isManualVerificationExcluded } from "@/lib/verification/manualValue";
 import type { Cabin, RouteDetail } from "@/types/flights";
+import type {
+  ManualAwardVerificationInput,
+  ManualEstimatedCpp,
+} from "@/types/verification";
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 const currencyFormatter = new Intl.NumberFormat("en-US", {
@@ -40,8 +46,10 @@ const cabinLabels: Record<Cabin, string> = {
 
 export interface RankedAwardOptionViewModel {
   directBalance: number;
+  manualEstimatedCpp?: ManualEstimatedCpp;
   option: ScoredAwardOption;
   transferPaths: TransferPathDisplay[];
+  verification?: ManualAwardVerificationInput;
 }
 
 function formatCurrency(value: number): string {
@@ -78,6 +86,58 @@ function formatConfidence(
   confidence: ScoredAwardOption["confidence"],
 ): string {
   return confidence === undefined ? "unreported" : confidence;
+}
+
+function formatVerificationStatus(
+  status: ManualAwardVerificationInput["status"] | undefined,
+): string | undefined {
+  if (status === "manually_verified") {
+    return "Manually verified";
+  }
+
+  if (status === "price_changed") {
+    return "Price changed";
+  }
+
+  if (status === "no_longer_available") {
+    return "No longer available";
+  }
+
+  if (status === "verification_failed") {
+    return "Could not verify";
+  }
+
+  return undefined;
+}
+
+function formatManualEstimateReason(
+  estimate: ManualEstimatedCpp,
+): string {
+  if (estimate.status !== "unavailable") {
+    return "Manual CPP is available.";
+  }
+
+  if (estimate.reasons.includes("no_longer_available")) {
+    return "Manual CPP is hidden because this award is marked no longer available.";
+  }
+
+  if (estimate.reasons.includes("verification_failed")) {
+    return "Manual CPP is blocked because this award could not be verified.";
+  }
+
+  if (estimate.reasons.includes("cash_fare_missing")) {
+    return "Add a comparable cash fare to estimate CPP.";
+  }
+
+  if (estimate.reasons.includes("taxes_and_fees_missing")) {
+    return "Enter verified taxes/fees before estimating CPP.";
+  }
+
+  if (estimate.reasons.includes("points_missing")) {
+    return "Verified points are required before estimating CPP.";
+  }
+
+  return "Manual CPP is unavailable until the entered values are valid.";
 }
 
 // Cash-side cabin is only a confirmed fare attribute when the provider says
@@ -252,9 +312,13 @@ function ChevronIcon({
 
 interface AwardOptionRowProps {
   directBalance: number;
+  manualEstimatedCpp?: ManualEstimatedCpp;
   onViewRoute: (trigger: HTMLElement) => void;
+  onClearVerification: () => void;
+  onSaveVerification: (input: ManualAwardVerificationInput) => void;
   option: ScoredAwardOption;
   transferPaths: TransferPathDisplay[];
+  verification?: ManualAwardVerificationInput;
 }
 
 // Compact, single-line-ish row: badges + program/route summary + score +
@@ -266,11 +330,18 @@ interface AwardOptionRowProps {
 // existing detail-view interaction isn't hidden behind the expand toggle.
 function AwardOptionRow({
   directBalance,
+  manualEstimatedCpp,
   onViewRoute,
+  onClearVerification,
+  onSaveVerification,
   option,
   transferPaths,
+  verification,
 }: AwardOptionRowProps): JSX.Element {
   const [isExpanded, setIsExpanded] = useState(false);
+  const verificationExcluded = isManualVerificationExcluded(
+    verification?.status,
+  );
   const isTransferRequired =
     directBalance < option.pointsRequired && transferPaths.length > 0;
   const extraContentId = `award-option-details-${option.id}`;
@@ -297,6 +368,11 @@ function AwardOptionRow({
             {isTransferRequired ? (
               <span className="rounded-md bg-[#fff9df] px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.1em] text-[#5d4c1d]">
                 Transfer required
+              </span>
+            ) : null}
+            {formatVerificationStatus(verification?.status) ? (
+              <span className="rounded-md bg-[#f7faf6] px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.1em] text-[#405147]">
+                {formatVerificationStatus(verification?.status)}
               </span>
             ) : null}
           </div>
@@ -375,7 +451,9 @@ function AwardOptionRow({
                 <CentsPerPointHelp />
               </p>
               <p className="mt-2 text-lg font-semibold text-[#14211b]">
-                {option.centsPerPoint?.toFixed(1) ?? "N/A"}
+                {verificationExcluded
+                  ? "Unavailable"
+                  : option.centsPerPoint?.toFixed(1) ?? "N/A"}
               </p>
             </div>
             <div className="rounded-md border border-[#d9e2d6] bg-[#f7faf6] p-3">
@@ -391,6 +469,40 @@ function AwardOptionRow({
           <TransferPathDetails
             isTransferRequired={isTransferRequired}
             paths={transferPaths}
+          />
+
+          {manualEstimatedCpp ? (
+            <div
+              className="rounded-md border border-[#b8c8b2] bg-[#f7faf6] p-3"
+              role="status"
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#2f6b4f]">
+                Manual comparison estimate
+              </p>
+              {manualEstimatedCpp.status === "available" ? (
+                <p className="mt-2 text-sm font-semibold text-[#14211b]">
+                  Estimated CPP: {manualEstimatedCpp.centsPerPoint.toFixed(1)}¢/pt
+                  <span className="ml-2 text-xs font-normal text-[#526158]">
+                    manual estimate
+                  </span>
+                </p>
+              ) : (
+                <p className="mt-2 text-sm leading-6 text-[#526158]">
+                  {formatManualEstimateReason(manualEstimatedCpp)}
+                </p>
+              )}
+              <p className="mt-2 text-xs leading-5 text-[#637268]">
+                Uses user-entered planning values only. Confirm availability
+                before transferring points.
+              </p>
+            </div>
+          ) : null}
+
+          <AwardVerificationControls
+            awardOptionId={option.id}
+            onClear={onClearVerification}
+            onSave={onSaveVerification}
+            value={verification}
           />
 
           {[...option.score.explanation, ...option.score.warnings].length >
@@ -521,8 +633,12 @@ interface RankedAwardOptionsProps {
   cashProviderSource: ProviderSourceState;
   hasCashResults: boolean;
   hasProviderAwardResults: boolean;
+  manualEstimatedCppByAwardId: Map<string, ManualEstimatedCpp>;
+  onClearVerification: (awardOptionId: string) => void;
+  onSaveVerification: (input: ManualAwardVerificationInput) => void;
   onViewRoute: (modal: RouteDetailsDrawerState, trigger: HTMLElement) => void;
   totalAwardOptionCount: number;
+  verificationsByAwardId: Record<string, ManualAwardVerificationInput>;
 }
 
 export function RankedAwardOptions({
@@ -532,8 +648,12 @@ export function RankedAwardOptions({
   cashProviderSource,
   hasCashResults,
   hasProviderAwardResults,
+  manualEstimatedCppByAwardId,
+  onClearVerification,
+  onSaveVerification,
   onViewRoute,
   totalAwardOptionCount,
+  verificationsByAwardId,
 }: RankedAwardOptionsProps): JSX.Element {
   return (
     <section className="space-y-4">
@@ -564,6 +684,7 @@ export function RankedAwardOptions({
             <AwardOptionRow
               directBalance={directBalance}
               key={option.id}
+              manualEstimatedCpp={manualEstimatedCppByAwardId.get(option.id)}
               onViewRoute={(trigger) =>
                 onViewRoute(
                   {
@@ -575,8 +696,11 @@ export function RankedAwardOptions({
                   trigger,
                 )
               }
+              onClearVerification={() => onClearVerification(option.id)}
+              onSaveVerification={onSaveVerification}
               option={option}
               transferPaths={transferPaths}
+              verification={verificationsByAwardId[option.id]}
             />
           ))}
         </div>

@@ -933,3 +933,104 @@ describe("ResultsPageClient unreported-field disclosure", () => {
     expect(screen.getByText(/Searched: Business/)).toBeInTheDocument();
   });
 });
+
+describe("ResultsPageClient award verification flow", () => {
+  it("guides the user to add a cash fare when awards are present but cash is unavailable", async () => {
+    await renderResultsWithOptions([unreportedFieldsAwardOption], {
+      data: [],
+      awardStatus: "success",
+      overallStatus: "partial",
+      status: "no_results",
+    });
+
+    expect(screen.getByText("Award leads found")).toBeInTheDocument();
+    expect(
+      screen.getByText("Add a cash fare to estimate value"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Cash fare in USD")).toBeInTheDocument();
+  });
+
+  it("shows a manual CPP only after cash, points, and taxes are available", async () => {
+    await renderResultsWithOptions([unreportedFieldsAwardOption], {
+      data: [],
+      awardStatus: "success",
+      overallStatus: "partial",
+      status: "no_results",
+    });
+
+    fireEvent.change(screen.getByLabelText("Cash fare in USD"), {
+      target: { value: "1500" },
+    });
+    expect((screen.getByLabelText("Cash fare in USD") as HTMLInputElement).value).toBe("1500");
+    fireEvent.click(screen.getByRole("button", { name: "Use this fare" }));
+    await waitFor(() =>
+      expect(screen.getByText(/Manual cash fare: \$1,500/)).toBeInTheDocument(),
+    );
+
+    const row = screen
+      .getByText("Turkish Miles&Smiles")
+      .closest("article") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /show details/i }));
+
+    await waitFor(() =>
+      expect(
+        within(row).getByText("Enter verified taxes/fees before estimating CPP."),
+      ).toBeInTheDocument(),
+    );
+    expect(within(row).queryByText(/Estimated CPP:/)).not.toBeInTheDocument();
+
+    fireEvent.change(within(row).getByLabelText("Verified taxes/fees in USD (optional)"), {
+      target: { value: "120" },
+    });
+    fireEvent.submit(
+      within(row).getByRole("button", { name: "Save verification" }).closest("form") as HTMLFormElement,
+    );
+
+    await waitFor(() =>
+      expect(within(row).getByText(/Estimated CPP: 2.8¢\/pt/)).toBeInTheDocument(),
+    );
+  });
+
+  it("uses an exact provider cash fare when only award taxes need manual verification", async () => {
+    await renderResultsWithOptions([heroOption, unreportedFieldsAwardOption]);
+
+    const row = screen
+      .getByText("Turkish Miles&Smiles")
+      .closest("article") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /show details/i }));
+    fireEvent.change(within(row).getByLabelText("Verified taxes/fees in USD (optional)"), {
+      target: { value: "120" },
+    });
+    fireEvent.submit(
+      within(row).getByRole("button", { name: "Save verification" }).closest("form") as HTMLFormElement,
+    );
+
+    await waitFor(() =>
+      expect(within(row).getByText(/Estimated CPP: 9.4¢\/pt/)).toBeInTheDocument(),
+    );
+  });
+
+  it("keeps unavailable awards visible but removes them from winner and CPP state", async () => {
+    await renderResultsWithOptions([heroOption, aeroplanOption]);
+
+    const row = screen
+      .getByText("Air Canada Aeroplan")
+      .closest("article") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /show details/i }));
+    fireEvent.change(within(row).getByLabelText("Verification status"), {
+      target: { value: "no_longer_available" },
+    });
+    fireEvent.submit(
+      within(row).getByRole("button", { name: "Save verification" }).closest("form") as HTMLFormElement,
+    );
+
+    await waitFor(() =>
+      expect(
+        within(row).getAllByText("No longer available")[0],
+      ).toBeInTheDocument(),
+    );
+    expect(within(row).getByText("Unavailable")).toBeInTheDocument();
+    expect(within(row).queryByText("4.9")).not.toBeInTheDocument();
+    expect(screen.queryByText("Transfer points to Air Canada Aeroplan")).not.toBeInTheDocument();
+  });
+});
