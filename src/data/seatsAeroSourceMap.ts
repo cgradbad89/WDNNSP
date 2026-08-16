@@ -34,6 +34,7 @@ export const SEATS_AERO_SOURCE_MAP: SeatsAeroSourceMap = {
   alaska: "Alaska Mileage Plan",
   american: "American Airlines AAdvantage", // matches data/transferPartners.ts
   azul: "Azul TudoAzul",
+  british: "British Airways Avios",
   connectmiles: "Copa Airlines ConnectMiles",
   delta: "Delta SkyMiles",
   emirates: "Emirates Skywards", // matches data/transferPartners.ts

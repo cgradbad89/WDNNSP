@@ -32,4 +32,8 @@ describe("SEATS_AERO_SOURCE_MAP", () => {
       getCardProgramsForAirline(SEATS_AERO_SOURCE_MAP.delta, TRANSFER_PARTNERS),
     ).toEqual([]);
   });
+
+  it("uses the documented British Airways display label", () => {
+    expect(SEATS_AERO_SOURCE_MAP.british).toBe("British Airways Avios");
+  });
 });
