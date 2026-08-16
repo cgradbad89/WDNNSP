@@ -74,8 +74,29 @@ describe("searchSeatsAeroAwardFlights", () => {
       true,
     );
     expect(calledUrl).not.toContain("/partnerapi/live");
-    expect(new URL(calledUrl).searchParams.get("cabins")).toBe("J");
+    expect(new URL(calledUrl).searchParams.get("cabins")).toBe("business");
   });
+
+  it.each([
+    ["economy", "economy"],
+    ["premium_economy", "premium"],
+    ["business", "business"],
+    ["first", "first"],
+  ] as const)(
+    "maps %s to the Seats.aero %s query cabin",
+    async (cabin, expectedQueryCabin) => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ data: [], count: 0, hasMore: false, cursor: 0 }),
+      );
+
+      await searchSeatsAeroAwardFlights({ ...search, cabin });
+
+      const [calledUrl] = fetchMock.mock.calls[0] as [string];
+      expect(new URL(calledUrl).searchParams.get("cabins")).toBe(
+        expectedQueryCabin,
+      );
+    },
+  );
 
   it("sends the API key via the Partner-Authorization header, not as a query param or Authorization header", async () => {
     fetchMock.mockResolvedValueOnce(
@@ -151,6 +172,24 @@ describe("searchSeatsAeroAwardFlights", () => {
 
     expect(envelope.status).toBe("no_results");
     expect(envelope.data).toEqual([]);
+  });
+
+  it("returns a safe error for an unsupported runtime cabin without falling back to economy", async () => {
+    const envelope = await searchSeatsAeroAwardFlights({
+      ...search,
+      cabin: "unsupported" as typeof search.cabin,
+    });
+
+    expect(envelope.status).toBe("error");
+    expect(envelope.data).toEqual([]);
+    expect(envelope.messages).toEqual([
+      {
+        code: "seats_aero_unsupported_cabin",
+        severity: "error",
+        message: "This cabin is not supported by the live award provider.",
+      },
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("normalizes known Seats.aero source slugs before transfer matching", async () => {

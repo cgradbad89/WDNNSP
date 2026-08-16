@@ -37,6 +37,9 @@ import type { SavedSearch } from "@/types/search";
 //   - Base URL is GET https://seats.aero/partnerapi/search (not documented
 //     anywhere else in this repo before now).
 //   - The cabin filter query param is `cabins` (plural), not `cabin`.
+//   - Cached Search expects human-readable cabin values (`economy`, `premium`,
+//     `business`, `first`) in `cabins`; the Y/W/J/F codes below are response
+//     field prefixes, not valid query values.
 //   - The nonstop filter query param is `only_direct_flights`, not
 //     `only_direct`.
 //   - There is no `ComputedLastSeen` field on a result. The closest
@@ -75,6 +78,15 @@ const SEATS_AERO_KEY_BY_CABIN: Record<Cabin, SeatsAeroCabinKey> = {
   premium_economy: "W",
   business: "J",
   first: "F",
+};
+
+type SeatsAeroQueryCabin = "economy" | "premium" | "business" | "first";
+
+const SEATS_AERO_QUERY_CABIN_BY_CABIN: Record<Cabin, SeatsAeroQueryCabin> = {
+  economy: "economy",
+  premium_economy: "premium",
+  business: "business",
+  first: "first",
 };
 
 const SEATS_AERO_CABIN_KEYS: SeatsAeroCabinKey[] = ["Y", "W", "J", "F"];
@@ -197,6 +209,12 @@ const unsupportedRouteMessage: ProviderMessage = {
   code: "seats_aero_unsupported_route",
   severity: "warning",
   message: "This route is not supported by the live award provider.",
+};
+
+const unsupportedCabinMessage: ProviderMessage = {
+  code: "seats_aero_unsupported_cabin",
+  severity: "error",
+  message: "This cabin is not supported by the live award provider.",
 };
 
 const authErrorMessage: ProviderMessage = {
@@ -639,12 +657,22 @@ export async function searchSeatsAeroAwardFlights(
     });
   }
 
+  const queryCabin = SEATS_AERO_QUERY_CABIN_BY_CABIN[search.cabin];
+
+  if (!queryCabin) {
+    return buildEnvelope({
+      status: "error",
+      data: [],
+      messages: [unsupportedCabinMessage],
+    });
+  }
+
   const params = new URLSearchParams({
     origin_airport: origin,
     destination_airport: destination,
     start_date: search.departDate,
     end_date: search.departDate,
-    cabins: SEATS_AERO_KEY_BY_CABIN[search.cabin],
+    cabins: queryCabin,
   });
 
   if (search.maxStops === 0) {
